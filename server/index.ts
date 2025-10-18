@@ -86,6 +86,19 @@ io.on('connection', (socket) => {
     const session = sessions.get(socket.id)
     if (!session) {
       console.log('No session found for', socket.id)
+      socket.emit('recording-error', {
+        message: 'No recording session found'
+      })
+      return
+    }
+
+    // Check if we received any video chunks
+    if (session.videoChunks.length === 0) {
+      console.error('No video chunks received')
+      socket.emit('recording-error', {
+        message: 'No video data was recorded. Please ensure screen sharing started properly.'
+      })
+      sessions.delete(socket.id)
       return
     }
 
@@ -96,6 +109,11 @@ io.on('connection', (socket) => {
     try {
       // Combine all video chunks into a single file
       const videoBuffer = Buffer.concat(session.videoChunks)
+
+      if (videoBuffer.length === 0) {
+        throw new Error('Video buffer is empty')
+      }
+
       fs.writeFileSync(tempVideoPath, videoBuffer)
       console.log(`Saved temp video file: ${tempVideoPath} (${videoBuffer.length} bytes)`)
 
@@ -119,11 +137,23 @@ io.on('connection', (socket) => {
           .on('end', () => {
             console.log(`Successfully created MP4: ${outputPath}`)
             // Clean up temp file
-            fs.unlinkSync(tempVideoPath)
+            try {
+              fs.unlinkSync(tempVideoPath)
+            } catch (err) {
+              console.warn('Could not delete temp file:', err)
+            }
             resolve()
           })
           .on('error', (err) => {
-            console.error('Error converting video:', err)
+            console.error('FFmpeg error:', err)
+            // Clean up temp file on error
+            try {
+              if (fs.existsSync(tempVideoPath)) {
+                fs.unlinkSync(tempVideoPath)
+              }
+            } catch (cleanupErr) {
+              console.warn('Could not delete temp file:', cleanupErr)
+            }
             reject(err)
           })
           .run()
@@ -136,8 +166,23 @@ io.on('connection', (socket) => {
 
     } catch (error) {
       console.error('Error processing video:', error)
+
+      let errorMessage = 'Failed to process recording'
+
+      if (error instanceof Error) {
+        if (error.message.includes('ffmpeg')) {
+          errorMessage = 'FFmpeg error: Please ensure FFmpeg is installed on the server. Run "ffmpeg -version" to check.'
+        } else if (error.message.includes('ENOENT')) {
+          errorMessage = 'FFmpeg not found. Please install FFmpeg on the server.'
+        } else if (error.message.includes('empty')) {
+          errorMessage = 'No video data was recorded. Please try again.'
+        } else {
+          errorMessage = `Recording failed: ${error.message}`
+        }
+      }
+
       socket.emit('recording-error', {
-        message: 'Failed to process recording'
+        message: errorMessage
       })
     } finally {
       // Clean up session
@@ -154,7 +199,33 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3001
 
-httpServer.listen(PORT, () => {
+// Check FFmpeg availability on startup
+function checkFFmpeg() {
+  return new Promise<boolean>((resolve) => {
+    ffmpeg.getAvailableFormats((err, formats) => {
+      if (err) {
+        console.error('❌ FFmpeg not found or not working properly')
+        console.error('   Please install FFmpeg: https://ffmpeg.org/download.html')
+        console.error('   Error:', err.message)
+        resolve(false)
+      } else {
+        console.log('✅ FFmpeg is installed and working')
+        resolve(true)
+      }
+    })
+  })
+}
+
+httpServer.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`)
   console.log(`WebSocket server ready for connections`)
+  console.log(`Recordings will be saved to: ${recordingsDir}`)
+  console.log('')
+
+  // Check FFmpeg
+  const ffmpegAvailable = await checkFFmpeg()
+  if (!ffmpegAvailable) {
+    console.warn('⚠️  WARNING: Video recordings will fail until FFmpeg is installed')
+  }
+  console.log('')
 })

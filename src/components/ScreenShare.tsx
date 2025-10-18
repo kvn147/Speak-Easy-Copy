@@ -59,26 +59,46 @@ function ScreenShare() {
         options.mimeType = 'video/webm'
       }
 
+      console.log('Creating MediaRecorder with options:', options)
+
       const mediaRecorder = new MediaRecorder(stream, options)
       mediaRecorderRef.current = mediaRecorder
 
+      let chunkCount = 0
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0 && socketRef.current) {
-          console.log('Sending video chunk:', event.data.size, 'bytes')
+          chunkCount++
+          console.log(`Sending video chunk #${chunkCount}:`, event.data.size, 'bytes')
           event.data.arrayBuffer().then((buffer) => {
             socketRef.current?.emit('video-chunk', buffer)
           })
+        } else if (event.data.size === 0) {
+          console.warn('Received empty video chunk')
         }
+      }
+
+      mediaRecorder.onstart = () => {
+        console.log('MediaRecorder started successfully')
+      }
+
+      mediaRecorder.onstop = () => {
+        console.log(`MediaRecorder stopped. Total chunks sent: ${chunkCount}`)
       }
 
       mediaRecorder.onerror = (event) => {
         console.error('MediaRecorder error:', event)
-        setError('Recording error occurred')
+        setError('Recording error occurred. Check browser console for details.')
       }
 
       // Start recording and send chunks every second
-      mediaRecorder.start(1000) // Generate chunks every 1 second
-      console.log('Recording started with mime type:', options.mimeType)
+      try {
+        mediaRecorder.start(1000) // Generate chunks every 1 second
+        console.log('Recording started with mime type:', options.mimeType)
+      } catch (startError) {
+        console.error('Failed to start MediaRecorder:', startError)
+        throw new Error('Failed to start recording: ' + (startError as Error).message)
+      }
 
       // Handle when user stops sharing via browser UI
       stream.getVideoTracks()[0].addEventListener('ended', () => {
