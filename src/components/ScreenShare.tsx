@@ -10,7 +10,36 @@ function ScreenShare() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const socketRef = useRef<Socket | null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const frameIntervalRef = useRef<number | null>(null)
+
+  const captureAndSendFrame = () => {
+    if (!videoRef.current || !canvasRef.current || !socketRef.current) return
+
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+
+    if (!ctx || video.videoWidth === 0 || video.videoHeight === 0) return
+
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+
+    // Draw current video frame to canvas
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+    // Convert canvas to JPEG blob
+    canvas.toBlob((blob) => {
+      if (blob && socketRef.current) {
+        // Convert blob to ArrayBuffer and send to server
+        blob.arrayBuffer().then((buffer) => {
+          console.log('Sending JPEG frame:', blob.size, 'bytes')
+          socketRef.current?.emit('video-chunk', buffer)
+        })
+      }
+    }, 'image/jpeg', 0.8) // JPEG with 80% quality
+  }
 
   const startScreenShare = async () => {
     try {
@@ -43,62 +72,26 @@ function ScreenShare() {
 
       setIsSharing(true)
 
-      // Set up MediaRecorder for the entire stream (video + audio)
-      const options: MediaRecorderOptions = {
-        mimeType: 'video/webm;codecs=vp8,opus',
-        videoBitsPerSecond: 2500000 // 2.5 Mbps for good quality
+      // Create canvas for frame capture if not exists
+      if (!canvasRef.current) {
+        canvasRef.current = document.createElement('canvas')
       }
 
-      // Try different codecs if the preferred one is not supported
-      if (!MediaRecorder.isTypeSupported(options.mimeType!)) {
-        console.log('vp8,opus not supported, trying vp9')
-        options.mimeType = 'video/webm;codecs=vp9,opus'
-      }
-      if (!MediaRecorder.isTypeSupported(options.mimeType!)) {
-        console.log('vp9 not supported, trying default')
-        options.mimeType = 'video/webm'
-      }
-
-      console.log('Creating MediaRecorder with options:', options)
-
-      const mediaRecorder = new MediaRecorder(stream, options)
-      mediaRecorderRef.current = mediaRecorder
-
-      let chunkCount = 0
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && socketRef.current) {
-          chunkCount++
-          console.log(`Sending video chunk #${chunkCount}:`, event.data.size, 'bytes')
-          event.data.arrayBuffer().then((buffer) => {
-            socketRef.current?.emit('video-chunk', buffer)
-          })
-        } else if (event.data.size === 0) {
-          console.warn('Received empty video chunk')
+      // Wait for video to be ready
+      await new Promise<void>((resolve) => {
+        if (videoRef.current) {
+          videoRef.current.onloadedmetadata = () => {
+            console.log('Video metadata loaded, ready to capture frames')
+            resolve()
+          }
         }
-      }
+      })
 
-      mediaRecorder.onstart = () => {
-        console.log('MediaRecorder started successfully')
-      }
-
-      mediaRecorder.onstop = () => {
-        console.log(`MediaRecorder stopped. Total chunks sent: ${chunkCount}`)
-      }
-
-      mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event)
-        setError('Recording error occurred. Check browser console for details.')
-      }
-
-      // Start recording and send chunks every second
-      try {
-        mediaRecorder.start(1000) // Generate chunks every 1 second
-        console.log('Recording started with mime type:', options.mimeType)
-      } catch (startError) {
-        console.error('Failed to start MediaRecorder:', startError)
-        throw new Error('Failed to start recording: ' + (startError as Error).message)
-      }
+      // Start capturing and sending frames every 2 seconds
+      console.log('Starting frame capture (every 2 seconds)')
+      frameIntervalRef.current = window.setInterval(() => {
+        captureAndSendFrame()
+      }, 2000) // 2 seconds = matches server processing interval
 
       // Handle when user stops sharing via browser UI
       stream.getVideoTracks()[0].addEventListener('ended', () => {
@@ -128,10 +121,11 @@ function ScreenShare() {
   }
 
   const stopScreenShare = () => {
-    // Stop MediaRecorder
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop()
-      mediaRecorderRef.current = null
+    // Stop frame capture interval
+    if (frameIntervalRef.current) {
+      clearInterval(frameIntervalRef.current)
+      frameIntervalRef.current = null
+      console.log('Stopped frame capture')
     }
 
     // Stop media streams
@@ -144,7 +138,7 @@ function ScreenShare() {
       videoRef.current.srcObject = null
     }
 
-    // Notify server to finalize recording
+    // Notify server
     if (socketRef.current) {
       socketRef.current.emit('stream-stop')
     }
@@ -172,13 +166,13 @@ function ScreenShare() {
       console.log('Server ready:', data.message)
     })
 
-    socket.on('recording-saved', (data) => {
-      console.log('Recording saved successfully:', data.filename)
-      alert(`Recording saved: ${data.filename}`)
+    socket.on('emotion-detected', (data) => {
+      console.log('Emotions detected:', data)
+      // TODO: Update UI with emotion data
     })
 
-    socket.on('recording-error', (data) => {
-      console.error('Recording error:', data.message)
+    socket.on('emotion-error', (data) => {
+      console.error('Emotion detection error:', data.message)
       setError(data.message)
     })
 
@@ -187,8 +181,8 @@ function ScreenShare() {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
       }
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop()
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current)
       }
       socket.disconnect()
     }
