@@ -1,0 +1,86 @@
+.screen-share-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  padding-bottom: 320px; /* Make room for advice panel */
+  min-height: 100vh;
+  background-color: #1a1a1a;
+  color: white;
+}
+
+.screen-share-container h1 {
+  margin-bottom: 1rem;
+  font-size: 2rem;
+  text-align: center;
+}
+
+.connection-status {
+  margin-bottom: 1rem;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.status-connected {
+  color: #4CAF50;
+}
+
+.status-connected::before {
+  content: '● ';
+}
+
+.status-disconnected {
+  color: #f44336;
+}
+
+.status-disconnected::before {
+  content: '● ';
+}
+
+.controls {
+  margin-bottom: 2rem;
+}
+
+.share-button,
+.stop-button {
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 200px;
+}
+
+.share-button {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.share-button:hover {
+  background-color: #45a049;
+  transform: scale(1.05);
+}
+
+.stop-button {
+  background-color: #f44336;
+  color: white;
+}
+
+.stop-button:hover {
+  background-color: #da190b;
+  transform: scale(1.05);
+}
+
+.error-message {
+  background-color: #f44336;
+  color: white;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  max-width: 600px;
+  text-align: center;
+}

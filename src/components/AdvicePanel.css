@@ -1,0 +1,99 @@
+.advice-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(30, 30, 30, 0.98), rgba(40, 40, 40, 0.95));
+  backdrop-filter: blur(10px);
+  border-top: 2px solid #646cff;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  transition: all 0.3s ease;
+}
+
+.advice-panel.expanded {
+  max-height: 300px;
+}
+
+.advice-panel.collapsed {
+  max-height: 50px;
+}
+
+.advice-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.advice-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #646cff;
+  font-weight: 600;
+}
+
+.toggle-button {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 0.5rem 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 1rem;
+}
+
+.toggle-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #646cff;
+}
+
+.advice-content {
+  padding: 1.5rem;
+  max-height: 230px;
+  overflow-y: auto;
+  color: #e0e0e0;
+  line-height: 1.6;
+}
+
+.advice-content p {
+  margin: 0;
+  font-size: 1rem;
+}
+
+/* Custom scrollbar */
+.advice-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.advice-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.advice-content::-webkit-scrollbar-thumb {
+  background: rgba(100, 108, 255, 0.5);
+  border-radius: 4px;
+}
+
+.advice-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 108, 255, 0.7);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .advice-panel.expanded {
+    max-height: 250px;
+  }
+
+  .advice-header h3 {
+    font-size: 1rem;
+  }
+
+  .advice-content {
+    padding: 1rem;
+    font-size: 0.9rem;
+  }
+}
