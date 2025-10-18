@@ -124,17 +124,15 @@ io.on('connection', (socket) => {
       console.log(`\n[Frame ${session.frameCount}] Analyzing emotions...`)
       console.log(`   Image size: ${(imageBuffer.length / 1024).toFixed(1)} KB`)
 
-      // Save first frame for debugging
-      if (session.frameCount === 1) {
-        const debugDir = path.join(__dirname, '../debug-frames')
-        if (!fs.existsSync(debugDir)) {
-          fs.mkdirSync(debugDir, { recursive: true })
-        }
-        const debugPath = path.join(debugDir, `frame-${Date.now()}.jpg`)
-        fs.writeFileSync(debugPath, imageBuffer)
-        console.log(`   💾 Saved debug frame to: ${debugPath}`)
-        console.log(`   📷 Open this file to see what Rekognition is analyzing`)
+      // Save ALL frames to Test folder for debugging
+      const testDir = path.join(__dirname, '../Test')
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir, { recursive: true })
       }
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const testFramePath = path.join(testDir, `frame-${session.frameCount}-${timestamp}.jpg`)
+      fs.writeFileSync(testFramePath, imageBuffer)
+      console.log(`   💾 Saved to Test folder: ${path.basename(testFramePath)}`)
 
       const emotions = await detectEmotionsFromFrame(imageBuffer)
 
