@@ -224,13 +224,22 @@ function ScreenShare() {
         </div>
       )}
 
-      {/* Hidden video element - needed for MediaRecorder but not displayed */}
+      {/* Hidden video element - needed for frame capture but not displayed to user */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
-        style={{ display: 'none' }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '1280px',
+          height: '720px',
+          opacity: 0,
+          pointerEvents: 'none',
+          zIndex: -1
+        }}
       />
 
       <AdvicePanel isVisible={isSharing} />
