@@ -3,10 +3,16 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { RekognitionClient, DetectFacesCommand } from '@aws-sdk/client-rekognition'
 
 // Load environment variables
 dotenv.config()
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 // Initialize AWS Rekognition client
 const rekognitionClient = new RekognitionClient({
@@ -116,6 +122,19 @@ io.on('connection', (socket) => {
     try {
       const imageBuffer = Buffer.from(data)
       console.log(`\n[Frame ${session.frameCount}] Analyzing emotions...`)
+      console.log(`   Image size: ${(imageBuffer.length / 1024).toFixed(1)} KB`)
+
+      // Save first frame for debugging
+      if (session.frameCount === 1) {
+        const debugDir = path.join(__dirname, '../debug-frames')
+        if (!fs.existsSync(debugDir)) {
+          fs.mkdirSync(debugDir, { recursive: true })
+        }
+        const debugPath = path.join(debugDir, `frame-${Date.now()}.jpg`)
+        fs.writeFileSync(debugPath, imageBuffer)
+        console.log(`   💾 Saved debug frame to: ${debugPath}`)
+        console.log(`   📷 Open this file to see what Rekognition is analyzing`)
+      }
 
       const emotions = await detectEmotionsFromFrame(imageBuffer)
 
@@ -137,7 +156,12 @@ io.on('connection', (socket) => {
           faces: emotions
         })
       } else {
-        console.log('   No faces detected in this frame')
+        console.log('   ❌ No faces detected in this frame')
+        console.log('   💡 Tips:')
+        console.log('      - Share ONLY the FaceTime/Zoom window (not entire screen)')
+        console.log('      - Make sure faces are clearly visible and not too small')
+        console.log('      - Faces should be at least 80x80 pixels')
+        console.log('      - Good lighting helps!')
       }
     } catch (error) {
       console.error('Error analyzing frame:', error)

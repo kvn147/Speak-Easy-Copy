@@ -18,6 +18,9 @@ dist-ssr
 # Recordings
 /recordings
 
+# Debug frames
+/debug-frames
+
 # Environment variables
 .env
 .env.local
