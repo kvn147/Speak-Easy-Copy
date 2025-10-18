@@ -2,13 +2,20 @@ import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
-import fs from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import ffmpeg from 'fluent-ffmpeg'
+import dotenv from 'dotenv'
+import { RekognitionClient, DetectFacesCommand } from '@aws-sdk/client-rekognition'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+// Load environment variables
+dotenv.config()
+
+// Initialize AWS Rekognition client
+const rekognitionClient = new RekognitionClient({
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+  }
+})
 
 const app = express()
 const httpServer = createServer(app)
@@ -23,20 +30,51 @@ const io = new Server(httpServer, {
 app.use(cors())
 app.use(express.json())
 
-// Create recordings directory if it doesn't exist
-const recordingsDir = path.join(__dirname, '../recordings')
-if (!fs.existsSync(recordingsDir)) {
-  fs.mkdirSync(recordingsDir, { recursive: true })
-}
-
-// Store active recording sessions
-interface RecordingSession {
-  videoChunks: Buffer[]
-  audioChunks: Buffer[]
+// Store active sessions for emotion detection
+interface EmotionSession {
+  frameCount: number
+  lastProcessedTime: number
   startTime: number
 }
 
-const sessions = new Map<string, RecordingSession>()
+const sessions = new Map<string, EmotionSession>()
+
+// Function to detect emotions from video frame using AWS Rekognition
+async function detectEmotionsFromFrame(imageBytes: Buffer) {
+  try {
+    const command = new DetectFacesCommand({
+      Image: {
+        Bytes: imageBytes
+      },
+      Attributes: ['ALL'] // Include emotions, age range, gender, etc.
+    })
+
+    const response = await rekognitionClient.send(command)
+
+    if (response.FaceDetails && response.FaceDetails.length > 0) {
+      const emotions = response.FaceDetails.map(face => {
+        const dominantEmotion = face.Emotions?.sort((a, b) =>
+          (b.Confidence || 0) - (a.Confidence || 0)
+        )[0]
+
+        return {
+          emotions: face.Emotions,
+          dominantEmotion: dominantEmotion?.Type,
+          confidence: dominantEmotion?.Confidence,
+          ageRange: face.AgeRange,
+          gender: face.Gender?.Value
+        }
+      })
+
+      return emotions
+    }
+
+    return null
+  } catch (error) {
+    console.error('Rekognition error:', error)
+    throw error
+  }
+}
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -51,143 +89,88 @@ io.on('connection', (socket) => {
   socket.on('stream-start', () => {
     console.log('Stream started for client:', socket.id)
 
-    // Initialize recording session
+    // Initialize emotion detection session
     sessions.set(socket.id, {
-      videoChunks: [],
-      audioChunks: [],
+      frameCount: 0,
+      lastProcessedTime: Date.now(),
       startTime: Date.now()
     })
 
-    socket.emit('stream-ready', { message: 'Server ready to receive stream' })
+    socket.emit('stream-ready', { message: 'Server ready to analyze emotions' })
   })
 
-  // Handle video stream chunks
-  socket.on('video-chunk', (data: ArrayBuffer) => {
+  // Handle video frames for emotion detection
+  socket.on('video-chunk', async (data: ArrayBuffer) => {
     const session = sessions.get(socket.id)
-    if (session) {
-      session.videoChunks.push(Buffer.from(data))
-      console.log('Received video chunk, size:', data.byteLength, 'bytes, total chunks:', session.videoChunks.length)
+    if (!session) return
+
+    const now = Date.now()
+    // Process every 2 seconds to avoid API rate limits
+    if (now - session.lastProcessedTime < 2000) {
+      return
+    }
+
+    session.lastProcessedTime = now
+    session.frameCount++
+
+    try {
+      const imageBuffer = Buffer.from(data)
+      console.log(`\n[Frame ${session.frameCount}] Analyzing emotions...`)
+
+      const emotions = await detectEmotionsFromFrame(imageBuffer)
+
+      if (emotions && emotions.length > 0) {
+        emotions.forEach((face, index) => {
+          console.log(`\n👤 Face ${index + 1}:`)
+          console.log(`   Dominant Emotion: ${face.dominantEmotion} (${face.confidence?.toFixed(1)}% confidence)`)
+          console.log(`   Age Range: ${face.ageRange?.Low}-${face.ageRange?.High}`)
+          console.log(`   Gender: ${face.gender}`)
+          console.log(`   All Emotions:`)
+          face.emotions?.forEach(emotion => {
+            console.log(`     - ${emotion.Type}: ${emotion.Confidence?.toFixed(1)}%`)
+          })
+        })
+
+        // Send emotions back to client for display
+        socket.emit('emotion-detected', {
+          timestamp: new Date().toISOString(),
+          faces: emotions
+        })
+      } else {
+        console.log('   No faces detected in this frame')
+      }
+    } catch (error) {
+      console.error('Error analyzing frame:', error)
+
+      if (error instanceof Error && error.message.includes('credentials')) {
+        socket.emit('emotion-error', {
+          message: 'AWS credentials not configured. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.'
+        })
+      }
     }
   })
 
-  // Handle audio stream chunks
+  // Handle audio chunks (for future transcription)
   socket.on('audio-chunk', (data: ArrayBuffer) => {
-    const session = sessions.get(socket.id)
-    if (session) {
-      session.audioChunks.push(Buffer.from(data))
-      console.log('Received audio chunk, size:', data.byteLength, 'bytes, total chunks:', session.audioChunks.length)
-    }
+    // TODO: Add audio transcription with AWS Transcribe
+    console.log('Received audio chunk, size:', data.byteLength, 'bytes')
   })
 
-  // Handle stream stop - save and encode video
-  socket.on('stream-stop', async () => {
+  // Handle stream stop
+  socket.on('stream-stop', () => {
     console.log('Stream stopped for client:', socket.id)
 
     const session = sessions.get(socket.id)
-    if (!session) {
-      console.log('No session found for', socket.id)
-      socket.emit('recording-error', {
-        message: 'No recording session found'
-      })
-      return
+    if (session) {
+      const duration = (Date.now() - session.startTime) / 1000
+      console.log(`\n📊 Session Summary:`)
+      console.log(`   Duration: ${duration.toFixed(1)}s`)
+      console.log(`   Frames analyzed: ${session.frameCount}`)
+      console.log(`   Average: ${(session.frameCount / duration).toFixed(1)} frames/sec`)
     }
 
-    // Check if we received any video chunks
-    if (session.videoChunks.length === 0) {
-      console.error('No video chunks received')
-      socket.emit('recording-error', {
-        message: 'No video data was recorded. Please ensure screen sharing started properly.'
-      })
-      sessions.delete(socket.id)
-      return
-    }
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const tempVideoPath = path.join(recordingsDir, `temp-${timestamp}.webm`)
-    const outputPath = path.join(recordingsDir, `recording-${timestamp}.mp4`)
-
-    try {
-      // Combine all video chunks into a single file
-      const videoBuffer = Buffer.concat(session.videoChunks)
-
-      if (videoBuffer.length === 0) {
-        throw new Error('Video buffer is empty')
-      }
-
-      fs.writeFileSync(tempVideoPath, videoBuffer)
-      console.log(`Saved temp video file: ${tempVideoPath} (${videoBuffer.length} bytes)`)
-
-      // Convert to MP4 with H264 codec using ffmpeg
-      await new Promise<void>((resolve, reject) => {
-        ffmpeg(tempVideoPath)
-          .outputOptions([
-            '-c:v libx264',      // H264 video codec
-            '-preset fast',       // Encoding speed
-            '-crf 23',           // Quality (lower = better, 23 is good default)
-            '-c:a aac',          // AAC audio codec
-            '-b:a 128k'          // Audio bitrate
-          ])
-          .output(outputPath)
-          .on('start', (commandLine) => {
-            console.log('FFmpeg command:', commandLine)
-          })
-          .on('progress', (progress) => {
-            console.log('Processing: ' + Math.round(progress.percent || 0) + '% done')
-          })
-          .on('end', () => {
-            console.log(`Successfully created MP4: ${outputPath}`)
-            // Clean up temp file
-            try {
-              fs.unlinkSync(tempVideoPath)
-            } catch (err) {
-              console.warn('Could not delete temp file:', err)
-            }
-            resolve()
-          })
-          .on('error', (err) => {
-            console.error('FFmpeg error:', err)
-            // Clean up temp file on error
-            try {
-              if (fs.existsSync(tempVideoPath)) {
-                fs.unlinkSync(tempVideoPath)
-              }
-            } catch (cleanupErr) {
-              console.warn('Could not delete temp file:', cleanupErr)
-            }
-            reject(err)
-          })
-          .run()
-      })
-
-      socket.emit('recording-saved', {
-        filename: path.basename(outputPath),
-        path: outputPath
-      })
-
-    } catch (error) {
-      console.error('Error processing video:', error)
-
-      let errorMessage = 'Failed to process recording'
-
-      if (error instanceof Error) {
-        if (error.message.includes('ffmpeg')) {
-          errorMessage = 'FFmpeg error: Please ensure FFmpeg is installed on the server. Run "ffmpeg -version" to check.'
-        } else if (error.message.includes('ENOENT')) {
-          errorMessage = 'FFmpeg not found. Please install FFmpeg on the server.'
-        } else if (error.message.includes('empty')) {
-          errorMessage = 'No video data was recorded. Please try again.'
-        } else {
-          errorMessage = `Recording failed: ${error.message}`
-        }
-      }
-
-      socket.emit('recording-error', {
-        message: errorMessage
-      })
-    } finally {
-      // Clean up session
-      sessions.delete(socket.id)
-    }
+    // Clean up session
+    sessions.delete(socket.id)
   })
 
   socket.on('disconnect', () => {
@@ -199,33 +182,25 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3001
 
-// Check FFmpeg availability on startup
-function checkFFmpeg() {
-  return new Promise<boolean>((resolve) => {
-    ffmpeg.getAvailableFormats((err, formats) => {
-      if (err) {
-        console.error('❌ FFmpeg not found or not working properly')
-        console.error('   Please install FFmpeg: https://ffmpeg.org/download.html')
-        console.error('   Error:', err.message)
-        resolve(false)
-      } else {
-        console.log('✅ FFmpeg is installed and working')
-        resolve(true)
-      }
-    })
-  })
-}
-
-httpServer.listen(PORT, async () => {
+httpServer.listen(PORT, () => {
+  console.log('===========================================')
+  console.log('🚀 Emotion Detection Server')
+  console.log('===========================================')
   console.log(`Server running on port ${PORT}`)
   console.log(`WebSocket server ready for connections`)
-  console.log(`Recordings will be saved to: ${recordingsDir}`)
   console.log('')
 
-  // Check FFmpeg
-  const ffmpegAvailable = await checkFFmpeg()
-  if (!ffmpegAvailable) {
-    console.warn('⚠️  WARNING: Video recordings will fail until FFmpeg is installed')
+  // Check AWS credentials
+  const hasCredentials = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+  if (hasCredentials) {
+    console.log('✅ AWS credentials configured')
+    console.log(`   Region: ${process.env.AWS_REGION || 'us-east-1'}`)
+  } else {
+    console.warn('⚠️  WARNING: AWS credentials not configured!')
+    console.warn('   Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables')
+    console.warn('   Emotion detection will not work without valid AWS credentials')
   }
   console.log('')
+  console.log('Ready to detect emotions! 😊😢😡😮😄')
+  console.log('===========================================\n')
 })

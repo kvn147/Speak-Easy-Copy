@@ -17,3 +17,7 @@ dist-ssr
 
 # Recordings
 /recordings
+
+# Environment variables
+.env
+.env.local
