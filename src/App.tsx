@@ -93,7 +93,7 @@ function App() {
           <div className="feature-icon">📚</div>
           <h2>Conversation History</h2>
           <p>View, manage, and analyze your past conversations with AI-powered summaries and speaking feedback.</p>
-          <a href="http://localhost:3000" target="_blank" rel="noopener noreferrer" className="primary-button">
+          <a href="/" target="_blank" rel="noopener noreferrer" className="primary-button">
             View Conversations
           </a>
         </div>

@@ -41,9 +41,6 @@ This guide will help you set up AWS credentials for emotion detection.
 **IMPORTANT:** Save these credentials immediately - you won't be able to see the secret key again!
 
 You'll see:
-- **Access key ID**: something like `AKIAIOSFODNN7EXAMPLE`
-- **Secret access key**: something like `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`
-
 ## Step 6: Configure Your Project
 
 1. In your project folder, create a `.env` file:

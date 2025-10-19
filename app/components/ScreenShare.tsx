@@ -226,8 +226,14 @@ export default function ScreenShare({ user }: ScreenShareProps) {
 
   // Set up Socket.IO connection
   useEffect(() => {
-    // Connect to server
-    const socket = io('http://localhost:3001');
+    // Connect to server - use environment variable or current host
+    const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ||
+                      (typeof window !== 'undefined'
+                        ? `http://${window.location.hostname}:3001`
+                        : 'http://localhost:3001');
+
+    console.log('Connecting to WebSocket server:', serverUrl);
+    const socket = io(serverUrl);
     socketRef.current = socket;
 
     socket.on('connect', () => {
