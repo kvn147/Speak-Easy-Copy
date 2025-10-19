@@ -15,13 +15,26 @@ import {
   InvokeModelCommand
 } from '@aws-sdk/client-bedrock-runtime'
 import { uploadConversationToS3 } from './s3.js'
-import { auth } from '../app/lib/firebase/adminConfig.js'
 import { getConversationsByUser, getConversationById, canAccessConversation, readConversationFile, updateConversationFile } from '../app/lib/markdown.js'
 import { generateExampleConversations } from '../app/lib/generateExamples.js'
 import { GoogleGenAI } from '@google/genai'
+import admin from 'firebase-admin'
 
 // Load environment variables
 dotenv.config()
+
+// Initialize Firebase Admin
+if (!admin.apps || admin.apps.length === 0) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }),
+  })
+}
+
+const auth = admin.auth()
 
 // Initialize Gemini AI
 const geminiAI = new GoogleGenAI({
