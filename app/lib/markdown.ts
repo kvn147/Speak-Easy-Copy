@@ -78,7 +78,8 @@ export async function getConversationById(
     id: conversationId,
     title: data.title || conversationId,
     date: data.date || new Date().toISOString(),
-    dialogue: data.dialogue || content,
+    // Use the markdown body content as dialogue (not frontmatter)
+    dialogue: content || '',
     feedback: data.feedback || '',
     summary: data.summary || '',
     userId,
