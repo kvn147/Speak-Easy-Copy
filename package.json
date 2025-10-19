@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.913.0",
     "@aws-sdk/client-rekognition": "^3.913.0",
     "@aws-sdk/client-transcribe-streaming": "^3.913.0",
     "cors": "^2.8.5",

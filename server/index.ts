@@ -13,6 +13,10 @@ import {
   LanguageCode,
   MediaEncoding
 } from '@aws-sdk/client-transcribe-streaming'
+import {
+  BedrockRuntimeClient,
+  InvokeModelCommand
+} from '@aws-sdk/client-bedrock-runtime'
 
 // Load environment variables
 dotenv.config()
@@ -30,6 +34,14 @@ const rekognitionClient = new RekognitionClient({
 })
 
 const transcribeClient = new TranscribeStreamingClient({
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+  }
+})
+
+const bedrockClient = new BedrockRuntimeClient({
   region: process.env.AWS_REGION || 'us-east-1',
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
@@ -55,10 +67,12 @@ interface AnalysisSession {
   frameCount: number
   lastProcessedTime: number
   lastAudioProcessedTime: number
+  lastAdviceGeneratedTime: number
   startTime: number
   currentEmotion: string | null
   fullTranscript: string
   audioChunks: Buffer[]
+  lastAdvice: string
 }
 
 const sessions = new Map<string, AnalysisSession>()
@@ -100,6 +114,62 @@ async function detectEmotionsFromFrame(imageBytes: Buffer) {
   }
 }
 
+// Function to generate conversation advice using Claude via Bedrock
+async function generateConversationAdvice(emotion: string | null, transcript: string) {
+  try {
+    const emotionContext = emotion || 'No emotion detected yet'
+    const transcriptContext = transcript || 'No speech detected yet'
+
+    // Create the prompt for Claude
+    const prompt = `You are a real-time conversation coach. Based on the current emotional state and conversation transcript, provide brief, actionable advice to help guide the conversation positively.
+
+Current Emotion: ${emotionContext}
+Conversation so far: "${transcriptContext}"
+
+Provide 1-2 sentences of helpful, specific advice. Focus on:
+- Responding to the detected emotion appropriately
+- Building on what's been said
+- Suggesting next steps or questions to deepen the conversation
+- Being encouraging and constructive
+
+Keep it concise and actionable.`
+
+    // Prepare the request for Claude 3.5 Sonnet
+    const payload = {
+      anthropic_version: "bedrock-2023-05-31",
+      max_tokens: 200,
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    }
+
+    const command = new InvokeModelCommand({
+      modelId: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify(payload)
+    })
+
+    const response = await bedrockClient.send(command)
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body))
+
+    if (responseBody.content && responseBody.content.length > 0) {
+      return responseBody.content[0].text
+    }
+
+    return 'Continue the conversation naturally.'
+  } catch (error) {
+    console.error('Bedrock error:', error)
+    if (error instanceof Error) {
+      console.error('Error details:', error.message)
+    }
+    return 'Keep engaging with the conversation.'
+  }
+}
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' })
@@ -118,10 +188,12 @@ io.on('connection', (socket) => {
       frameCount: 0,
       lastProcessedTime: Date.now(),
       lastAudioProcessedTime: Date.now(),
+      lastAdviceGeneratedTime: Date.now(),
       startTime: Date.now(),
       currentEmotion: null,
       fullTranscript: '',
-      audioChunks: []
+      audioChunks: [],
+      lastAdvice: 'Start your conversation naturally. I\'ll provide live tips as we go.'
     })
 
     socket.emit('stream-ready', { message: 'Server ready to analyze emotions and transcribe audio' })
@@ -285,6 +357,48 @@ io.on('connection', (socket) => {
         }
 
         console.log('╚═══════════════════════════════════════════════════════════\n')
+
+        // Generate advice if we have both emotion and transcript, and it's been 10+ seconds since last advice
+        const now = Date.now()
+        const timeSinceLastAdvice = now - session.lastAdviceGeneratedTime
+
+        if (session.currentEmotion && session.fullTranscript && timeSinceLastAdvice >= 10000) {
+          session.lastAdviceGeneratedTime = now
+
+          console.log('💡 Generating conversation advice...')
+          const advice = await generateConversationAdvice(session.currentEmotion, session.fullTranscript)
+          session.lastAdvice = advice
+
+          // Send advice to frontend
+          socket.emit('advice-update', {
+            advice: advice,
+            emotion: session.currentEmotion,
+            timestamp: new Date().toISOString()
+          })
+
+          console.log('╔═══════════════════════════════════════════════════════════')
+          console.log('║ 💡 LIVE ADVICE:')
+          console.log('╠═══════════════════════════════════════════════════════════')
+
+          // Word wrap the advice
+          const words = advice.split(' ')
+          let currentLine = '║ '
+          const maxLineLength = 58
+
+          for (const word of words) {
+            if ((currentLine.length + word.length + 1 - 2) > maxLineLength) {
+              console.log(currentLine)
+              currentLine = '║ ' + word
+            } else {
+              currentLine += (currentLine === '║ ' ? '' : ' ') + word
+            }
+          }
+          if (currentLine !== '║ ') {
+            console.log(currentLine)
+          }
+
+          console.log('╚═══════════════════════════════════════════════════════════\n')
+        }
       }
     } catch (error) {
       console.error('Transcription error:', error)

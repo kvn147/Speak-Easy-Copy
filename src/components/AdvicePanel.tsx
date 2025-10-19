@@ -3,9 +3,11 @@ import './AdvicePanel.css'
 
 interface AdvicePanelProps {
   isVisible: boolean
+  advice: string
+  emotion?: string
 }
 
-function AdvicePanel({ isVisible }: AdvicePanelProps) {
+function AdvicePanel({ isVisible, advice, emotion }: AdvicePanelProps) {
   const [isExpanded, setIsExpanded] = useState(true)
 
   if (!isVisible) return null
@@ -13,10 +15,11 @@ function AdvicePanel({ isVisible }: AdvicePanelProps) {
   return (
     <div className={`advice-panel ${isExpanded ? 'expanded' : 'collapsed'}`}>
       <div className="advice-header">
-        <h3>Live Suggestions</h3>
+        <h3>💡 Live Conversation Coach</h3>
         <button
           className="toggle-button"
           onClick={() => setIsExpanded(!isExpanded)}
+          aria-label={isExpanded ? 'Collapse panel' : 'Expand panel'}
         >
           {isExpanded ? '▼' : '▲'}
         </button>
@@ -24,13 +27,13 @@ function AdvicePanel({ isVisible }: AdvicePanelProps) {
 
       {isExpanded && (
         <div className="advice-content">
-          <p>
-            Hi this is just some text to test out the component working, I will just keep
-            filling it up with text and text. This panel will eventually display real-time
-            suggestions based on emotion detection and conversation analysis. For now,
-            this is placeholder content to demonstrate the layout and positioning of the
-            advice panel at the bottom of the screen. You can collapse and expand this
-            panel using the button above.
+          {emotion && (
+            <div className="emotion-badge">
+              Current mood: {emotion}
+            </div>
+          )}
+          <p className="advice-text">
+            {advice}
           </p>
         </div>
       )}

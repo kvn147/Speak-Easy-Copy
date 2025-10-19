@@ -63,6 +63,25 @@
   font-size: 1rem;
 }
 
+.emotion-badge {
+  display: inline-block;
+  background: rgba(100, 108, 255, 0.2);
+  color: #646cff;
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+  border: 1px solid rgba(100, 108, 255, 0.3);
+}
+
+.advice-text {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: #ffffff;
+  margin: 0;
+}
+
 /* Custom scrollbar */
 .advice-content::-webkit-scrollbar {
   width: 8px;
