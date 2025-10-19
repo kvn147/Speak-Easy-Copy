@@ -356,7 +356,7 @@ IMPORTANT: Output ONLY the JSON object, no other text.`
 }
 
 // Function to save conversation as markdown file
-function saveConversationToMarkdown(session: AnalysisSession, summary: string, duration: number) {
+function saveConversationToMarkdown(session: AnalysisSession, summary: string | null, duration: number) {
   try {
     // Use user ID from session
     const userId = session.userId
@@ -383,19 +383,13 @@ function saveConversationToMarkdown(session: AnalysisSession, summary: string, d
     // Format transcript as dialogue
     const dialogue = session.fullTranscript || 'No transcript available.'
 
-    // Extract first line of summary for frontmatter
-    const summaryPreview = summary.split('\n').filter(line => line.trim().length > 0 && !line.startsWith('#'))[0] || 'AI-generated conversation summary'
-
     // Create markdown content with frontmatter and consistent structure
+    // Summary is left empty - user will generate it manually by clicking "Generate Summary"
     const markdown = `---
 title: Conversation ${dateStr} ${timeStr.replace(/-/g, ':')}
 date: ${timestamp}
-summary: ${summaryPreview.substring(0, 200)}
+summary:
 feedback:
----
-
-${summary}
-
 ---
 
 ## 📝 Full Transcript
@@ -760,37 +754,10 @@ io.on('connection', (socket) => {
         console.log('╚═══════════════════════════════════════════════════════════\n')
       }
 
-      // Generate AI-powered conversation summary with delay to avoid rate limiting
-      console.log('\n🤖 Waiting 3 seconds before generating summary to avoid rate limits...\n')
-
-      setTimeout(async () => {
-        try {
-          console.log('🤖 Generating conversation summary with AI...\n')
-          const summary = await generateConversationSummary(
-            session.moodHistory,
-            session.fullTranscript,
-            duration
-          )
-
-          // Print the markdown summary
-          console.log('\n' + '='.repeat(70))
-          console.log(summary)
-          console.log('='.repeat(70) + '\n')
-
-          // Save conversation as markdown file
-          saveConversationToMarkdown(session, summary, duration)
-        } catch (summaryError) {
-          console.error('Failed to generate summary after retry:', summaryError)
-          console.log('\n' + '='.repeat(70))
-          console.log('# Conversation Summary')
-          console.log('\nUnable to generate summary due to rate limiting.')
-          console.log('Please wait a moment and the summary will be generated.')
-          console.log('='.repeat(70) + '\n')
-
-          // Save conversation even without summary
-          saveConversationToMarkdown(session, 'Summary generation pending...', duration)
-        }
-      }, 3000) // Wait 3 seconds before generating summary
+      // Save conversation immediately without summary
+      // User can generate summary manually by clicking "Generate Summary" button
+      console.log('💾 Saving conversation (summary will be generated when user clicks "Generate Summary")...\n')
+      saveConversationToMarkdown(session, null, duration)
     }
 
     // Clean up session

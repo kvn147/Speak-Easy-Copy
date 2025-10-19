@@ -30,35 +30,14 @@ export default function LiveSessionPage() {
 
   return (
     <div>
-      <nav style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        background: 'rgba(0, 0, 0, 0.9)',
-        backdropFilter: 'blur(10px)',
-        padding: '1rem 2rem',
-        zIndex: 1000,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
+      <nav className="live-session-nav">
         <button
           onClick={() => router.push('/')}
-          style={{
-            background: 'transparent',
-            color: 'white',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            padding: '0.5rem 1rem',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            transition: 'all 0.2s'
-          }}
+          className="nav-back-button"
         >
           ← Back to Home
         </button>
-        <div style={{ color: 'white', fontSize: '14px' }}>
+        <div className="nav-user-email">
           {user.email}
         </div>
       </nav>
