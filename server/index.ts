@@ -484,12 +484,13 @@ io.on('connection', (socket) => {
     const audioBuffer = Buffer.from(data)
     session.audioChunks.push(audioBuffer)
 
-    // Process audio every 5 seconds to get enough context for transcription
+    // Process audio every 6 seconds to get enough context for better transcription accuracy
     const now = Date.now()
     const timeSinceLastTranscription = now - session.lastAudioProcessedTime
 
-    // Only transcribe if we have enough audio (5 seconds worth) and some chunks
-    if (timeSinceLastTranscription < 5000 || session.audioChunks.length < 10) {
+    // Only transcribe if we have enough audio (6 seconds worth) and sufficient chunks
+    // Increased from 5s to 6s for better accuracy with larger buffer size
+    if (timeSinceLastTranscription < 6000 || session.audioChunks.length < 15) {
       return
     }
 
@@ -505,8 +506,9 @@ io.on('connection', (socket) => {
 
       // Create async generator that yields audio chunks
       async function* audioStream() {
-        // Split the combined audio into smaller chunks for streaming
-        const chunkSize = 4096 * 2 // 4096 samples * 2 bytes per sample (16-bit PCM)
+        // Split the combined audio into optimal chunks for streaming
+        // Increased to 8192 to match frontend buffer size for better quality
+        const chunkSize = 8192 * 2 // 8192 samples * 2 bytes per sample (16-bit PCM)
         for (let i = 0; i < combinedAudio.length; i += chunkSize) {
           const chunk = combinedAudio.slice(i, Math.min(i + chunkSize, combinedAudio.length))
           yield { AudioEvent: { AudioChunk: chunk } }
@@ -517,7 +519,10 @@ io.on('connection', (socket) => {
         LanguageCode: LanguageCode.EN_US,
         MediaEncoding: MediaEncoding.PCM,
         MediaSampleRateHertz: 48000,
-        AudioStream: audioStream()
+        AudioStream: audioStream(),
+        EnablePartialResultsStabilization: true,
+        PartialResultsStability: 'high', // Improves accuracy of partial results
+        ShowSpeakerLabel: false // Not needed for single speaker
       })
 
       const response = await transcribeClient.send(command)
@@ -680,18 +685,31 @@ io.on('connection', (socket) => {
         console.log('╚═══════════════════════════════════════════════════════════\n')
       }
 
-      // Generate AI-powered conversation summary
-      console.log('\n🤖 Generating conversation summary with AI...\n')
-      const summary = await generateConversationSummary(
-        session.moodHistory,
-        session.fullTranscript,
-        duration
-      )
+      // Generate AI-powered conversation summary with delay to avoid rate limiting
+      console.log('\n🤖 Waiting 3 seconds before generating summary to avoid rate limits...\n')
 
-      // Print the markdown summary
-      console.log('\n' + '='.repeat(70))
-      console.log(summary)
-      console.log('='.repeat(70) + '\n')
+      setTimeout(async () => {
+        try {
+          console.log('🤖 Generating conversation summary with AI...\n')
+          const summary = await generateConversationSummary(
+            session.moodHistory,
+            session.fullTranscript,
+            duration
+          )
+
+          // Print the markdown summary
+          console.log('\n' + '='.repeat(70))
+          console.log(summary)
+          console.log('='.repeat(70) + '\n')
+        } catch (summaryError) {
+          console.error('Failed to generate summary after retry:', summaryError)
+          console.log('\n' + '='.repeat(70))
+          console.log('# Conversation Summary')
+          console.log('\nUnable to generate summary due to rate limiting.')
+          console.log('Please wait a moment and the summary will be generated.')
+          console.log('='.repeat(70) + '\n')
+        }
+      }, 3000) // Wait 3 seconds before generating summary
     }
 
     // Clean up session

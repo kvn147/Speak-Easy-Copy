@@ -65,7 +65,8 @@ function ScreenShare() {
     const source = audioContext.createMediaStreamSource(new MediaStream([audioTracks[0]]))
 
     // Create a script processor to capture raw audio data
-    const processor = audioContext.createScriptProcessor(4096, 1, 1)
+    // Using 8192 buffer for better quality (was 4096)
+    const processor = audioContext.createScriptProcessor(8192, 1, 1)
     audioProcessorRef.current = processor
 
     processor.onaudioprocess = (e) => {
