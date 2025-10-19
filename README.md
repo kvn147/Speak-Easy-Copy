@@ -1,21 +1,23 @@
 # SpeakEasy - Real-Time Conversation Assistant
 
-A real-time screen sharing application that captures video and audio from Zoom/FaceTime calls, processes them for emotion detection and transcription, and provides live suggestions to help guide conversations.
+A real-time screen sharing application that captures video and audio from Zoom/FaceTime calls, analyzes emotions using AWS Rekognition, transcribes speech using AWS Transcribe, and provides live conversation insights.
 
 ## Features
 
 - Screen capture with audio
-- Real-time video streaming to backend
-- MP4 H264 video recording
+- Real-time emotion detection using AWS Rekognition
+- Real-time speech transcription using AWS Transcribe
 - Live advice panel for conversation suggestions
 - Socket.IO for real-time communication
+- Automatic frame capture every 2 seconds
+- Automatic audio transcription every 5 seconds
 
 ## Prerequisites
 
 Before running this project, make sure you have the following installed:
 
 ### 1. Node.js and npm
-- **Node.js version**: 16.x or higher
+- **Node.js version**: 18.x or higher
 - Download from: https://nodejs.org/
 
 Verify installation:
@@ -24,34 +26,13 @@ node --version
 npm --version
 ```
 
-### 2. FFmpeg (Required for video encoding)
+### 2. AWS Account and Credentials
 
-FFmpeg is needed to convert recorded video to MP4 H264 format.
+You'll need an AWS account with access to:
+- **AWS Rekognition** (for emotion detection)
+- **AWS Transcribe** (for speech transcription)
 
-#### macOS
-```bash
-# Install Homebrew if not already installed
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Install FFmpeg
-brew install ffmpeg
-```
-
-#### Ubuntu/Debian Linux
-```bash
-sudo apt update
-sudo apt install ffmpeg
-```
-
-#### Windows
-1. Download from: https://ffmpeg.org/download.html
-2. Extract the archive
-3. Add FFmpeg to your system PATH
-
-Verify FFmpeg installation:
-```bash
-ffmpeg -version
-```
+See `AWS_SETUP.md` for detailed instructions on setting up your AWS account and obtaining credentials.
 
 ### 3. Recommended Browser
 - **Google Chrome** (recommended) or Chromium-based browser (Edge, Brave)
@@ -82,10 +63,31 @@ This will install all required packages including:
 - `express` - Web server framework
 - `socket.io` - WebSocket server
 - `cors` - Cross-origin resource sharing
-- `fluent-ffmpeg` - FFmpeg wrapper for video encoding
+- `@aws-sdk/client-rekognition` - AWS Rekognition for emotion detection
+- `@aws-sdk/client-transcribe-streaming` - AWS Transcribe for speech transcription
+- `dotenv` - Environment variable management
 
 **TypeScript Types:**
-- `@types/react`, `@types/react-dom`, `@types/express`, `@types/cors`, `@types/fluent-ffmpeg`, `@types/node`
+- `@types/react`, `@types/react-dom`, `@types/express`, `@types/cors`, `@types/node`
+
+### 3. Configure AWS Credentials
+
+Create a `.env` file in the root directory:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and add your AWS credentials:
+
+```
+AWS_ACCESS_KEY_ID=your_access_key_here
+AWS_SECRET_ACCESS_KEY=your_secret_key_here
+AWS_REGION=us-east-1
+PORT=3001
+```
+
+**Important:** Never commit your `.env` file to git! It's already in `.gitignore`.
 
 ## Running the Application
 
@@ -100,8 +102,17 @@ The server will start on `http://localhost:3001`
 
 You should see:
 ```
+===========================================
+🚀 Emotion Detection Server
+===========================================
 Server running on port 3001
 WebSocket server ready for connections
+
+✅ AWS credentials configured
+   Region: us-east-1
+
+Ready to detect emotions! 😊😢😡😮😄
+===========================================
 ```
 
 ### Terminal 2: Start the Frontend Dev Server
@@ -137,25 +148,45 @@ VITE v5.x.x  ready in xxx ms
 
 1. Click **"Start Screen Share"** button
 2. Chrome will show a dialog - select:
-   - **"Entire Screen"** - to capture your full screen
-   - **"Window"** - to capture a specific window (like Zoom)
-   - **"Chrome Tab"** - to capture a browser tab
-3. Check **"Share audio"** if you want to capture system audio
+   - **"Window"** - Select your Zoom/FaceTime window (RECOMMENDED for best results)
+   - **"Entire Screen"** - Captures full screen (faces may be too small)
+   - **"Chrome Tab"** - To capture a browser tab
+3. Check **"Share audio"** to capture audio for transcription
 4. Click **"Share"**
 
-### 3. View Live Suggestions
+**Important Tips:**
+- Share ONLY the FaceTime/Zoom window (not entire screen) for best emotion detection
+- Make sure faces are clearly visible and well-lit
+- Faces should be at least 80x80 pixels for detection
+
+### 3. View Live Analysis
 
 Once screen sharing starts:
-- The advice panel will appear at the bottom of the page
-- Currently shows placeholder text
-- Can be collapsed/expanded with the ▼/▲ button
+- Backend console shows real-time emotion detection every 2 seconds
+- Backend console shows speech transcription every 5 seconds
+- All analyzed frames are saved to `Test/` folder for debugging
+
+**Example Console Output:**
+
+```
+╔═══════════════════════════════════════════════════════════
+║ 😊 MOOD: HAPPY (85.3%)
+╚═══════════════════════════════════════════════════════════
+
+╔═══════════════════════════════════════════════════════════
+║ 💬 SPEECH TRANSCRIPTION (Full Session):
+╠═══════════════════════════════════════════════════════════
+║ Hello how are you doing today I'm doing great thanks
+║ for asking
+╚═══════════════════════════════════════════════════════════
+```
 
 ### 4. Stop Recording
 
 Click **"Stop Sharing"** when done. The backend will:
-- Save the recording to `recordings/` folder
-- Convert to MP4 H264 format using FFmpeg
-- Display success message with filename
+- Display session summary with statistics
+- Show final complete transcript
+- Clean up session data
 
 ## Project Structure
 
@@ -173,10 +204,13 @@ Dubhacks2025/
 │   └── index.css                # Global styles
 ├── server/
 │   └── index.ts                 # Express + Socket.IO backend
-├── recordings/                  # Recorded videos (auto-generated)
+├── Test/                        # Debug frames (auto-generated)
+├── .env                         # AWS credentials (DO NOT COMMIT)
+├── .env.example                 # Example environment variables
 ├── package.json                 # Dependencies and scripts
 ├── tsconfig.json               # TypeScript configuration
 ├── vite.config.ts              # Vite configuration
+├── AWS_SETUP.md                # AWS setup instructions
 └── README.md                   # This file
 ```
 
@@ -192,11 +226,14 @@ npm run preview    # Preview production build
 ## How It Works
 
 1. **Frontend** captures screen using `navigator.mediaDevices.getDisplayMedia()`
-2. **MediaRecorder API** records video+audio in WebM format
-3. Video chunks are sent to backend via **Socket.IO** every second
-4. **Backend** stores chunks in memory during recording
-5. When stopped, backend combines chunks and uses **FFmpeg** to convert to MP4 H264
-6. Recordings saved to `recordings/` folder with timestamp
+2. **Video frames** are drawn to a hidden canvas and converted to JPEG every 2 seconds
+3. **Audio** is captured via Web Audio API and converted to PCM 16-bit format
+4. JPEG frames sent to backend via **Socket.IO** for emotion detection
+5. PCM audio chunks sent to backend continuously for transcription
+6. **Backend** sends frames to **AWS Rekognition** for emotion analysis
+7. **Backend** streams audio to **AWS Transcribe** for speech-to-text
+8. Results displayed in backend console in real-time
+9. All analyzed frames saved to `Test/` folder for debugging
 
 ## Troubleshooting
 
@@ -215,19 +252,29 @@ npm run preview    # Preview production build
 - Check that backend is on port 3001
 - Verify no firewall blocking localhost connections
 
-### FFmpeg errors during recording
+### AWS Credentials Error
 
 **Solution:**
-- Verify FFmpeg is installed: `ffmpeg -version`
-- Make sure FFmpeg is in your system PATH
-- Check backend console for specific FFmpeg errors
+- Check that `.env` file exists with valid AWS credentials
+- Verify credentials have access to Rekognition and Transcribe
+- Check AWS region is correct (default: us-east-1)
+- Backend will show warning on startup if credentials missing
 
-### No audio in recording
+### No faces detected
+
+**Solution:**
+- Share ONLY the FaceTime/Zoom window (not entire screen)
+- Make sure faces are clearly visible and well-lit
+- Faces should be at least 80x80 pixels
+- Check `Test/` folder to see what the camera is capturing
+
+### No audio transcription
 
 **Solution:**
 - When selecting screen to share, check **"Share audio"** checkbox
-- Make sure the application you're recording (Zoom/FaceTime) has permission to use microphone
+- Make sure the application you're recording has permission to use microphone
 - Check that your system audio is not muted
+- Check backend console for transcription errors
 
 ### Port already in use
 
@@ -244,19 +291,20 @@ kill -9 <PID>
 
 ## Next Steps / TODO
 
-- [ ] Integrate emotion detection API
-- [ ] Add audio transcription service
-- [ ] Connect LLM for generating live suggestions
+- [ ] Integrate LLM for generating live suggestions based on emotions and speech
 - [ ] Display real suggestions in AdvicePanel
 - [ ] Add session management and history
+- [ ] Export transcripts and emotion data
 - [ ] Deploy to production
 
 ## Tech Stack
 
 - **Frontend:** React 18, TypeScript, Vite
 - **Backend:** Node.js, Express, Socket.IO
-- **Video Processing:** FFmpeg, MediaRecorder API
+- **AI Services:** AWS Rekognition (emotion detection), AWS Transcribe (speech-to-text)
 - **Real-time Communication:** WebSocket (Socket.IO)
+- **Audio Processing:** Web Audio API (PCM conversion)
+- **Image Processing:** Canvas API (JPEG frame extraction)
 
 ## Browser Support
 
