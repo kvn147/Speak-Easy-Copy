@@ -354,6 +354,65 @@ IMPORTANT: Output ONLY the JSON object, no other text.`
   }
 }
 
+// Function to save conversation as markdown file
+function saveConversationToMarkdown(session: AnalysisSession, summary: string, duration: number) {
+  try {
+    // Use 'demo-user' as default user ID (can be replaced with actual user ID from Firebase)
+    const userId = 'demo-user'
+    const conversationsDir = path.join(__dirname, '../conversations', userId)
+
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(conversationsDir)) {
+      fs.mkdirSync(conversationsDir, { recursive: true })
+    }
+
+    // Generate filename based on timestamp
+    const timestamp = new Date().toISOString()
+    const dateStr = timestamp.split('T')[0]
+    const timeStr = timestamp.split('T')[1].split('.')[0].replace(/:/g, '-')
+    const filename = `conversation-${dateStr}-${timeStr}.md`
+    const filepath = path.join(conversationsDir, filename)
+
+    // Build mood history text
+    const moodSummary = session.moodHistory
+      .map(m => `- ${new Date(m.timestamp).toLocaleTimeString()}: ${m.emotion} (${m.confidence.toFixed(1)}%)`)
+      .join('\n')
+
+    // Format transcript as dialogue
+    const dialogue = session.fullTranscript || 'No transcript available.'
+
+    // Create markdown content with frontmatter
+    const markdown = `---
+title: Conversation Session ${dateStr} ${timeStr.replace(/-/g, ':')}
+date: ${timestamp}
+summary: ${summary.replace(/\n/g, ' ').substring(0, 200)}...
+feedback:
+---
+
+# Dialogue
+
+${dialogue}
+
+# Detected Emotions Timeline
+
+${moodSummary || 'No emotions detected.'}
+
+# Session Details
+
+- **Duration:** ${duration.toFixed(1)} seconds
+- **Frames Analyzed:** ${session.frameCount}
+- **Recording Date:** ${new Date(session.startTime).toLocaleString()}
+`
+
+    // Write to file
+    fs.writeFileSync(filepath, markdown, 'utf-8')
+    console.log(`\n💾 Conversation saved to: ${filename}`)
+    console.log(`   Location: ${filepath}\n`)
+  } catch (error) {
+    console.error('Error saving conversation to markdown:', error)
+  }
+}
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' })
@@ -701,6 +760,9 @@ io.on('connection', (socket) => {
           console.log('\n' + '='.repeat(70))
           console.log(summary)
           console.log('='.repeat(70) + '\n')
+
+          // Save conversation as markdown file
+          saveConversationToMarkdown(session, summary, duration)
         } catch (summaryError) {
           console.error('Failed to generate summary after retry:', summaryError)
           console.log('\n' + '='.repeat(70))
@@ -708,6 +770,9 @@ io.on('connection', (socket) => {
           console.log('\nUnable to generate summary due to rate limiting.')
           console.log('Please wait a moment and the summary will be generated.')
           console.log('='.repeat(70) + '\n')
+
+          // Save conversation even without summary
+          saveConversationToMarkdown(session, 'Summary generation pending...', duration)
         }
       }, 3000) // Wait 3 seconds before generating summary
     }

@@ -1,4 +1,18 @@
-# SpeakEasy - Real-Time Conversation Assistant
+# SpeakEasy - Unified Conversation Platform
+
+A comprehensive real-time conversation assistant and management platform that combines live AI-powered analysis with conversation storage, review, and post-session insights.
+
+## Quick Start
+
+**For complete setup and usage instructions, see [INTEGRATION_README.md](./INTEGRATION_README.md)**
+
+This application now includes:
+- **Live Session Mode**: Real-time screen sharing with emotion detection, transcription, and AI advice
+- **Conversation History**: Firebase authentication, conversation storage, AI summaries, and speaking feedback
+
+---
+
+# Original README - Real-Time Conversation Assistant
 
 A real-time screen sharing application that captures video and audio from Zoom/FaceTime calls, analyzes emotions using AWS Rekognition, transcribes speech using AWS Transcribe, and provides live conversation insights.
 
