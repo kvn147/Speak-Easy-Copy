@@ -7,6 +7,12 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { RekognitionClient, DetectFacesCommand } from '@aws-sdk/client-rekognition'
+import {
+  TranscribeStreamingClient,
+  StartStreamTranscriptionCommand,
+  LanguageCode,
+  MediaEncoding
+} from '@aws-sdk/client-transcribe-streaming'
 
 // Load environment variables
 dotenv.config()
@@ -14,8 +20,16 @@ dotenv.config()
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Initialize AWS Rekognition client
+// Initialize AWS clients
 const rekognitionClient = new RekognitionClient({
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+  }
+})
+
+const transcribeClient = new TranscribeStreamingClient({
   region: process.env.AWS_REGION || 'us-east-1',
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
@@ -36,14 +50,18 @@ const io = new Server(httpServer, {
 app.use(cors())
 app.use(express.json())
 
-// Store active sessions for emotion detection
-interface EmotionSession {
+// Store active sessions for emotion detection and transcription
+interface AnalysisSession {
   frameCount: number
   lastProcessedTime: number
+  lastAudioProcessedTime: number
   startTime: number
+  currentEmotion: string | null
+  fullTranscript: string
+  audioChunks: Buffer[]
 }
 
-const sessions = new Map<string, EmotionSession>()
+const sessions = new Map<string, AnalysisSession>()
 
 // Function to detect emotions from video frame using AWS Rekognition
 async function detectEmotionsFromFrame(imageBytes: Buffer) {
@@ -95,14 +113,18 @@ io.on('connection', (socket) => {
   socket.on('stream-start', () => {
     console.log('Stream started for client:', socket.id)
 
-    // Initialize emotion detection session
+    // Initialize analysis session
     sessions.set(socket.id, {
       frameCount: 0,
       lastProcessedTime: Date.now(),
-      startTime: Date.now()
+      lastAudioProcessedTime: Date.now(),
+      startTime: Date.now(),
+      currentEmotion: null,
+      fullTranscript: '',
+      audioChunks: []
     })
 
-    socket.emit('stream-ready', { message: 'Server ready to analyze emotions' })
+    socket.emit('stream-ready', { message: 'Server ready to analyze emotions and transcribe audio' })
   })
 
   // Handle video frames for emotion detection
@@ -137,16 +159,16 @@ io.on('connection', (socket) => {
       const emotions = await detectEmotionsFromFrame(imageBuffer)
 
       if (emotions && emotions.length > 0) {
-        emotions.forEach((face, index) => {
-          console.log(`\n👤 Face ${index + 1}:`)
-          console.log(`   Dominant Emotion: ${face.dominantEmotion} (${face.confidence?.toFixed(1)}% confidence)`)
-          console.log(`   Age Range: ${face.ageRange?.Low}-${face.ageRange?.High}`)
-          console.log(`   Gender: ${face.gender}`)
-          console.log(`   All Emotions:`)
-          face.emotions?.forEach(emotion => {
-            console.log(`     - ${emotion.Type}: ${emotion.Confidence?.toFixed(1)}%`)
-          })
-        })
+        const dominantEmotion = emotions[0].dominantEmotion || 'UNKNOWN'
+        const confidence = emotions[0].confidence || 0
+
+        // Store current emotion in session
+        session.currentEmotion = `${dominantEmotion} (${confidence.toFixed(1)}%)`
+
+        // Display emotion only
+        console.log('╔═══════════════════════════════════════════════════════════')
+        console.log(`║ 😊 MOOD: ${session.currentEmotion}`)
+        console.log('╚═══════════════════════════════════════════════════════════\n')
 
         // Send emotions back to client for display
         socket.emit('emotion-detected', {
@@ -154,12 +176,8 @@ io.on('connection', (socket) => {
           faces: emotions
         })
       } else {
+        session.currentEmotion = 'No face detected'
         console.log('   ❌ No faces detected in this frame')
-        console.log('   💡 Tips:')
-        console.log('      - Share ONLY the FaceTime/Zoom window (not entire screen)')
-        console.log('      - Make sure faces are clearly visible and not too small')
-        console.log('      - Faces should be at least 80x80 pixels')
-        console.log('      - Good lighting helps!')
       }
     } catch (error) {
       console.error('Error analyzing frame:', error)
@@ -172,10 +190,109 @@ io.on('connection', (socket) => {
     }
   })
 
-  // Handle audio chunks (for future transcription)
-  socket.on('audio-chunk', (data: ArrayBuffer) => {
-    // TODO: Add audio transcription with AWS Transcribe
-    console.log('Received audio chunk, size:', data.byteLength, 'bytes')
+  // Handle audio chunks for transcription
+  socket.on('audio-chunk', async (data: ArrayBuffer) => {
+    const session = sessions.get(socket.id)
+    if (!session) return
+
+    const audioBuffer = Buffer.from(data)
+    session.audioChunks.push(audioBuffer)
+
+    // Process audio every 5 seconds to get enough context for transcription
+    const now = Date.now()
+    const timeSinceLastTranscription = now - session.lastAudioProcessedTime
+
+    // Only transcribe if we have enough audio (5 seconds worth) and some chunks
+    if (timeSinceLastTranscription < 5000 || session.audioChunks.length < 10) {
+      return
+    }
+
+    // Update last audio processed time
+    session.lastAudioProcessedTime = now
+
+    try {
+      // Combine all audio chunks
+      const combinedAudio = Buffer.concat(session.audioChunks)
+      session.audioChunks = [] // Clear for next batch
+
+      console.log(`🎤 Processing ${(combinedAudio.length / 1024).toFixed(1)} KB of audio...`)
+
+      // Create async generator that yields audio chunks
+      async function* audioStream() {
+        // Split the combined audio into smaller chunks for streaming
+        const chunkSize = 4096 * 2 // 4096 samples * 2 bytes per sample (16-bit PCM)
+        for (let i = 0; i < combinedAudio.length; i += chunkSize) {
+          const chunk = combinedAudio.slice(i, Math.min(i + chunkSize, combinedAudio.length))
+          yield { AudioEvent: { AudioChunk: chunk } }
+        }
+      }
+
+      const command = new StartStreamTranscriptionCommand({
+        LanguageCode: LanguageCode.EN_US,
+        MediaEncoding: MediaEncoding.PCM,
+        MediaSampleRateHertz: 48000,
+        AudioStream: audioStream()
+      })
+
+      const response = await transcribeClient.send(command)
+
+      // Process transcription results
+      let newTextDetected = false
+      if (response.TranscriptResultStream) {
+        for await (const event of response.TranscriptResultStream) {
+          if (event.TranscriptEvent) {
+            const results = event.TranscriptEvent.Transcript?.Results
+            if (results && results.length > 0) {
+              const transcript = results[0]
+              if (!transcript.IsPartial) {
+                const text = transcript.Alternatives?.[0]?.Transcript || ''
+                if (text.trim()) {
+                  // Append to full transcript
+                  if (session.fullTranscript) {
+                    session.fullTranscript += ' ' + text
+                  } else {
+                    session.fullTranscript = text
+                  }
+                  newTextDetected = true
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Display accumulated transcript if new text was detected
+      if (newTextDetected) {
+        console.log('╔═══════════════════════════════════════════════════════════')
+        console.log('║ 💬 SPEECH TRANSCRIPTION (Full Session):')
+        console.log('╠═══════════════════════════════════════════════════════════')
+
+        // Word wrap the transcript for better readability
+        const words = session.fullTranscript.split(' ')
+        let currentLine = '║ '
+        const maxLineLength = 58 // 60 chars minus "║ "
+
+        for (const word of words) {
+          if ((currentLine.length + word.length + 1 - 2) > maxLineLength) {
+            console.log(currentLine)
+            currentLine = '║ ' + word
+          } else {
+            currentLine += (currentLine === '║ ' ? '' : ' ') + word
+          }
+        }
+        if (currentLine !== '║ ') {
+          console.log(currentLine)
+        }
+
+        console.log('╚═══════════════════════════════════════════════════════════\n')
+      }
+    } catch (error) {
+      console.error('Transcription error:', error)
+      if (error instanceof Error) {
+        console.error('Error message:', error.message)
+      }
+      // Don't fail the whole process if transcription fails
+    }
   })
 
   // Handle stream stop
@@ -189,6 +306,31 @@ io.on('connection', (socket) => {
       console.log(`   Duration: ${duration.toFixed(1)}s`)
       console.log(`   Frames analyzed: ${session.frameCount}`)
       console.log(`   Average: ${(session.frameCount / duration).toFixed(1)} frames/sec`)
+
+      // Display final full transcript
+      if (session.fullTranscript) {
+        console.log('\n╔═══════════════════════════════════════════════════════════')
+        console.log('║ 📝 FINAL FULL TRANSCRIPT:')
+        console.log('╠═══════════════════════════════════════════════════════════')
+
+        const words = session.fullTranscript.split(' ')
+        let currentLine = '║ '
+        const maxLineLength = 58
+
+        for (const word of words) {
+          if ((currentLine.length + word.length + 1 - 2) > maxLineLength) {
+            console.log(currentLine)
+            currentLine = '║ ' + word
+          } else {
+            currentLine += (currentLine === '║ ' ? '' : ' ') + word
+          }
+        }
+        if (currentLine !== '║ ') {
+          console.log(currentLine)
+        }
+
+        console.log('╚═══════════════════════════════════════════════════════════\n')
+      }
     }
 
     // Clean up session

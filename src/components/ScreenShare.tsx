@@ -12,6 +12,8 @@ function ScreenShare() {
   const socketRef = useRef<Socket | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const frameIntervalRef = useRef<number | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null)
 
   const captureAndSendFrame = () => {
     if (!videoRef.current || !canvasRef.current || !socketRef.current) return
@@ -39,6 +41,63 @@ function ScreenShare() {
         })
       }
     }, 'image/jpeg', 0.8) // JPEG with 80% quality
+  }
+
+  const setupAudioCapture = (stream: MediaStream) => {
+    const audioTracks = stream.getAudioTracks()
+    if (audioTracks.length === 0) {
+      console.warn('No audio tracks available in stream')
+      return
+    }
+
+    // Create audio context
+    audioContextRef.current = new AudioContext({ sampleRate: 48000 })
+    const audioContext = audioContextRef.current
+
+    // Create a media stream source from the audio track
+    const source = audioContext.createMediaStreamSource(new MediaStream([audioTracks[0]]))
+
+    // Create a script processor to capture raw audio data
+    const processor = audioContext.createScriptProcessor(4096, 1, 1)
+    audioProcessorRef.current = processor
+
+    processor.onaudioprocess = (e) => {
+      if (!socketRef.current) return
+
+      // Get the raw audio data (Float32Array)
+      const inputData = e.inputBuffer.getChannelData(0)
+
+      // Convert Float32Array to Int16Array (PCM 16-bit)
+      const pcmData = new Int16Array(inputData.length)
+      for (let i = 0; i < inputData.length; i++) {
+        // Convert from -1.0 to 1.0 range to -32768 to 32767 range
+        const s = Math.max(-1, Math.min(1, inputData[i]))
+        pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
+      }
+
+      // Send PCM data to server
+      socketRef.current.emit('audio-chunk', pcmData.buffer)
+    }
+
+    // Connect the audio graph
+    source.connect(processor)
+    processor.connect(audioContext.destination)
+
+    console.log('Audio capture setup complete (48kHz PCM)')
+  }
+
+  const stopAudioCapture = () => {
+    if (audioProcessorRef.current) {
+      audioProcessorRef.current.disconnect()
+      audioProcessorRef.current = null
+    }
+
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+
+    console.log('Audio capture stopped')
   }
 
   const startScreenShare = async () => {
@@ -93,6 +152,9 @@ function ScreenShare() {
         captureAndSendFrame()
       }, 2000) // 2 seconds = matches server processing interval
 
+      // Set up audio capture for transcription
+      setupAudioCapture(stream)
+
       // Handle when user stops sharing via browser UI
       stream.getVideoTracks()[0].addEventListener('ended', () => {
         stopScreenShare()
@@ -127,6 +189,9 @@ function ScreenShare() {
       frameIntervalRef.current = null
       console.log('Stopped frame capture')
     }
+
+    // Stop audio capture
+    stopAudioCapture()
 
     // Stop media streams
     if (streamRef.current) {
@@ -184,6 +249,7 @@ function ScreenShare() {
       if (frameIntervalRef.current) {
         clearInterval(frameIntervalRef.current)
       }
+      stopAudioCapture()
       socket.disconnect()
     }
   }, [])
