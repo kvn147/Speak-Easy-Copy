@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useRef, useEffect } from 'react'
 import { io, Socket } from 'socket.io-client'
 import AdvicePanel from './AdvicePanel'
@@ -7,6 +9,7 @@ function ScreenShare() {
   const [isSharing, setIsSharing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
   const [currentOptions, setCurrentOptions] = useState<string[]>([
     'Start your conversation naturally',
     'Be yourself and stay engaged',
@@ -22,7 +25,14 @@ function ScreenShare() {
   const audioContextRef = useRef<AudioContext | null>(null)
   const audioProcessorRef = useRef<ScriptProcessorNode | null>(null)
 
+  // Check if we're in the browser (for SSR compatibility)
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
   const captureAndSendFrame = () => {
+    // Guard: Only run in browser
+    if (typeof window === 'undefined') return
     if (!videoRef.current || !canvasRef.current || !socketRef.current) return
 
     const video = videoRef.current
@@ -51,6 +61,12 @@ function ScreenShare() {
   }
 
   const setupAudioCapture = (stream: MediaStream) => {
+    // Guard: Check if we're in browser and AudioContext is available
+    if (typeof window === 'undefined' || typeof AudioContext === 'undefined') {
+      console.warn('AudioContext not available in this environment')
+      return
+    }
+
     const audioTracks = stream.getAudioTracks()
     if (audioTracks.length === 0) {
       console.warn('No audio tracks available in stream')
@@ -112,9 +128,14 @@ function ScreenShare() {
     try {
       setError(null)
 
-      // Check if running in browser
-      if (typeof window === 'undefined' || typeof navigator === 'undefined' || !navigator.mediaDevices) {
+      // Guard: Check if running in browser with media capabilities
+      if (typeof window === 'undefined') {
         setError('Screen sharing is only available in the browser')
+        return
+      }
+
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        setError('Screen sharing is not supported in this browser or environment')
         return
       }
 
@@ -296,6 +317,16 @@ function ScreenShare() {
     }
   }, [])
 
+  // Don't render interactive elements during SSR
+  if (!isMounted) {
+    return (
+      <div className="screen-share-container">
+        <h1>Screen Sharing for Emotion Detection</h1>
+        <div className="loading-message">Loading screen share interface...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="screen-share-container">
       <h1>Screen Sharing for Emotion Detection</h1>
@@ -313,6 +344,7 @@ function ScreenShare() {
           <button
             onClick={startScreenShare}
             className="share-button"
+            disabled={!isMounted}
           >
             Start Screen Share
           </button>
