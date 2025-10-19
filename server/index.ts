@@ -583,20 +583,23 @@ io.on('connection', (socket) => {
 
         console.log('╚═══════════════════════════════════════════════════════════\n')
 
-        // Generate advice if we have both emotion and transcript
-        // Trigger when: (1) emotion just changed OR (2) 10+ seconds since last advice
+        // Generate advice only every 15 seconds to avoid rate limiting
         const now = Date.now()
         const timeSinceLastAdvice = now - session.lastAdviceGeneratedTime
         const shouldGenerateAdvice = session.currentEmotion && session.fullTranscript &&
-                                     (session.emotionJustChanged || timeSinceLastAdvice >= 10000)
+                                     timeSinceLastAdvice >= 15000 // 15 seconds minimum interval
 
         if (shouldGenerateAdvice) {
           session.lastAdviceGeneratedTime = now
 
-          if (session.emotionJustChanged) {
-            console.log('💡 EMOTION CHANGED! Generating CREATIVE conversation advice...')
+          // Check if emotion changed recently for better context
+          const recentEmotionChange = session.emotionJustChanged ||
+                                      (session.previousEmotion && session.previousEmotion !== session.currentEmotion?.split('(')[0].trim())
+
+          if (recentEmotionChange) {
+            console.log('💡 Generating CREATIVE conversation advice (emotion recently changed)...')
           } else {
-            console.log('💡 Generating conversation advice with 10s aggregate data...')
+            console.log('💡 Generating conversation advice with 15s aggregate data...')
           }
 
           const adviceOptions = await generateConversationAdvice(
@@ -604,7 +607,7 @@ io.on('connection', (socket) => {
             session.transcriptSegments,
             session.currentEmotion,
             session.fullTranscript,
-            session.emotionJustChanged,
+            recentEmotionChange,
             session.previousEmotion
           )
           session.lastAdvice = adviceOptions
@@ -613,12 +616,12 @@ io.on('connection', (socket) => {
           socket.emit('advice-update', {
             options: adviceOptions,
             emotion: session.currentEmotion,
-            emotionChanged: session.emotionJustChanged,
+            emotionChanged: recentEmotionChange,
             timestamp: new Date().toISOString()
           })
 
           console.log('╔═══════════════════════════════════════════════════════════')
-          console.log(`║ 💡 LIVE RESPONSE OPTIONS${session.emotionJustChanged ? ' (EMOTION SHIFT)' : ''}:`)
+          console.log(`║ 💡 LIVE RESPONSE OPTIONS${recentEmotionChange ? ' (EMOTION SHIFT)' : ''}:`)
           console.log('╠═══════════════════════════════════════════════════════════')
 
           adviceOptions.forEach((option, index) => {
@@ -628,9 +631,7 @@ io.on('connection', (socket) => {
           console.log('╚═══════════════════════════════════════════════════════════\n')
 
           // Reset emotion changed flag after generating advice
-          if (session.emotionJustChanged) {
-            session.emotionJustChanged = false
-          }
+          session.emotionJustChanged = false
         }
       }
     } catch (error) {
