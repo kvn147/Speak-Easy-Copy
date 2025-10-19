@@ -50,7 +50,7 @@ ${dialogueContent}`;
       model: 'gemini-2.5-flash',
       contents: prompt,
     });
-    const feedback = response.text;
+    const feedback = response.text || '';
 
     console.log('✅ Generated feedback:', feedback.substring(0, 5000) + '...');
     console.log(feedback)

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     // Generate example conversations for this user
     console.log('📝 Generating example conversations...');
-    generateExampleConversations(userId);
+    await generateExampleConversations(userId);
     console.log('✅ Example conversations created successfully');
 
     return NextResponse.json({ 

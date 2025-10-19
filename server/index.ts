@@ -3,9 +3,6 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import fs from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
 import { RekognitionClient, DetectFacesCommand } from '@aws-sdk/client-rekognition'
 import {
   TranscribeStreamingClient,
@@ -17,12 +14,10 @@ import {
   BedrockRuntimeClient,
   InvokeModelCommand
 } from '@aws-sdk/client-bedrock-runtime'
+import { uploadConversationToS3 } from './s3.js'
 
 // Load environment variables
 dotenv.config()
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
 
 // Initialize AWS clients
 const rekognitionClient = new RekognitionClient({
@@ -131,6 +126,8 @@ async function detectEmotionsFromFrame(imageBytes: Buffer) {
 }
 
 // Function to generate conversation summary using Claude via Bedrock
+// Currently unused - summaries generated manually via Gemini API
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function generateConversationSummary(
   moodHistory: MoodSnapshot[],
   fullTranscript: string,
@@ -356,16 +353,10 @@ IMPORTANT: Output ONLY the JSON object, no other text.`
 }
 
 // Function to save conversation as markdown file
-function saveConversationToMarkdown(session: AnalysisSession, summary: string | null, duration: number) {
+async function saveConversationToMarkdown(session: AnalysisSession, _summary: string | null, duration: number) {
   try {
     // Use user ID from session
     const userId = session.userId
-    const conversationsDir = path.join(__dirname, '../conversations', userId)
-
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(conversationsDir)) {
-      fs.mkdirSync(conversationsDir, { recursive: true })
-    }
 
     // Generate unique filename: userId + timestamp + random string
     const timestamp = new Date().toISOString()
@@ -373,7 +364,6 @@ function saveConversationToMarkdown(session: AnalysisSession, summary: string | 
     const timeStr = timestamp.split('T')[1].split('.')[0].replace(/:/g, '-')
     const randomStr = Math.random().toString(36).substring(2, 8) // 6 character random string
     const filename = `${userId}-${dateStr}-${timeStr}-${randomStr}.md`
-    const filepath = path.join(conversationsDir, filename)
 
     // Build mood history text
     const moodSummary = session.moodHistory
@@ -412,17 +402,16 @@ ${moodSummary || 'No emotions detected.'}
 - **User ID:** ${userId}
 `
 
-    // Write to file
-    fs.writeFileSync(filepath, markdown, 'utf-8')
-    console.log(`\n💾 Conversation saved to: ${filename}`)
-    console.log(`   Location: ${filepath}\n`)
+    // Upload to S3
+    await uploadConversationToS3(userId, filename, markdown)
+    console.log(`   User folder: ${userId}/\n`)
   } catch (error) {
-    console.error('Error saving conversation to markdown:', error)
+    console.error('Error saving conversation to S3:', error)
   }
 }
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', message: 'Server is running' })
 })
 
@@ -480,7 +469,9 @@ io.on('connection', (socket) => {
       console.log(`\n[Frame ${session.frameCount}] Analyzing emotions...`)
       console.log(`   Image size: ${(imageBuffer.length / 1024).toFixed(1)} KB`)
 
-      // Save ALL frames to Test folder for debugging
+      // Debug: Save frames locally (disabled in production)
+      // Uncomment if you need to debug frame capture locally:
+      /*
       const testDir = path.join(__dirname, '../Test')
       if (!fs.existsSync(testDir)) {
         fs.mkdirSync(testDir, { recursive: true })
@@ -489,6 +480,7 @@ io.on('connection', (socket) => {
       const testFramePath = path.join(testDir, `frame-${session.frameCount}-${timestamp}.jpg`)
       fs.writeFileSync(testFramePath, imageBuffer)
       console.log(`   💾 Saved to Test folder: ${path.basename(testFramePath)}`)
+      */
 
       const emotions = await detectEmotionsFromFrame(imageBuffer)
 
@@ -681,7 +673,7 @@ io.on('connection', (socket) => {
             session.transcriptSegments,
             session.currentEmotion,
             session.fullTranscript,
-            recentEmotionChange,
+            recentEmotionChange || false,
             session.previousEmotion
           )
           session.lastAdvice = adviceOptions
@@ -757,7 +749,7 @@ io.on('connection', (socket) => {
       // Save conversation immediately without summary
       // User can generate summary manually by clicking "Generate Summary" button
       console.log('💾 Saving conversation (summary will be generated when user clicks "Generate Summary")...\n')
-      saveConversationToMarkdown(session, null, duration)
+      await saveConversationToMarkdown(session, null, duration)
     }
 
     // Clean up session

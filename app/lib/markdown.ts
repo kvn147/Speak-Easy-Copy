@@ -1,6 +1,5 @@
-import fs from 'fs';
-import path from 'path';
 import matter from 'gray-matter';
+import { uploadToS3, downloadFromS3, listUserFiles, getConversationKey } from './s3';
 
 export interface Conversation {
   id: string;
@@ -19,41 +18,44 @@ export interface ConversationDetail {
   userId: string;
 }
 
-// Base directory for markdown files
-const CONVERSATIONS_DIR = path.join(process.cwd(), 'conversations');
-
 /**
  * Get all conversations for a specific user
  */
 export async function getConversationsByUser(userId: string): Promise<Conversation[]> {
-  const userDir = path.join(CONVERSATIONS_DIR, userId);
+  // List all files in user's S3 folder
+  const s3Keys = await listUserFiles(userId);
 
-  // Create user directory if it doesn't exist
-  if (!fs.existsSync(userDir)) {
-    fs.mkdirSync(userDir, { recursive: true });
+  if (s3Keys.length === 0) {
     return [];
   }
 
-  const files = fs.readdirSync(userDir);
-  const mdFiles = files.filter((file) => file.endsWith('.md'));
+  const conversations = await Promise.all(
+    s3Keys.map(async (key) => {
+      const filename = key.split('/').pop() || '';
+      const conversationId = filename.replace('.md', '');
 
-  const conversations: Conversation[] = mdFiles.map((filename) => {
-    const filePath = path.join(userDir, filename);
-    const fileContents = fs.readFileSync(filePath, 'utf8');
-    const { data } = matter(fileContents);
+      // Download and parse the file
+      const fileContents = await downloadFromS3(key);
+      if (!fileContents) {
+        return null;
+      }
 
-    return {
-      id: filename.replace('.md', ''),
-      title: data.title || filename.replace('.md', ''),
-      date: data.date || new Date().toISOString(),
-      userId,
-    };
-  });
+      const { data } = matter(fileContents);
 
-  // Sort by date, newest first
-  conversations.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return {
+        id: conversationId,
+        title: data.title || conversationId,
+        date: data.date || new Date().toISOString(),
+        userId,
+      };
+    })
+  );
 
-  return conversations;
+  // Filter out null values and sort by date, newest first
+  const validConversations = conversations.filter((c): c is Conversation => c !== null);
+  validConversations.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  return validConversations;
 }
 
 /**
@@ -63,13 +65,13 @@ export async function getConversationById(
   userId: string,
   conversationId: string
 ): Promise<ConversationDetail | null> {
-  const filePath = path.join(CONVERSATIONS_DIR, userId, `${conversationId}.md`);
+  const key = getConversationKey(userId, conversationId);
+  const fileContents = await downloadFromS3(key);
 
-  if (!fs.existsSync(filePath)) {
+  if (!fileContents) {
     return null;
   }
 
-  const fileContents = fs.readFileSync(filePath, 'utf8');
   const { data, content } = matter(fileContents);
 
   return {
@@ -86,21 +88,16 @@ export async function getConversationById(
 /**
  * Check if a user has access to a conversation
  */
-export function canAccessConversation(userId: string, conversationId: string): boolean {
-  const filePath = path.join(CONVERSATIONS_DIR, userId, `${conversationId}.md`);
-  return fs.existsSync(filePath);
+export async function canAccessConversation(userId: string, conversationId: string): Promise<boolean> {
+  const key = getConversationKey(userId, conversationId);
+  const content = await downloadFromS3(key);
+  return content !== null;
 }
 
 /**
  * Create example conversation files for a user (helper for testing)
  */
-export function createExampleConversations(userId: string): void {
-  const userDir = path.join(CONVERSATIONS_DIR, userId);
-  
-  if (!fs.existsSync(userDir)) {
-    fs.mkdirSync(userDir, { recursive: true });
-  }
-
+export async function createExampleConversations(userId: string): Promise<void> {
   const exampleConversation = `---
 title: Welcome Conversation
 date: ${new Date().toISOString()}
@@ -114,7 +111,7 @@ feedback: Great first conversation!
 Hello! How does this system work?
 
 ## Assistant
-Welcome! This is a Notion-like markdown viewer with Firebase authentication. Each conversation is stored as a markdown file, and only you can see your own conversations.
+Welcome! This is a Notion-like markdown viewer with Firebase authentication. Each conversation is stored as a markdown file in S3, and only you can see your own conversations.
 
 ## User
 That sounds great! What features are available?
@@ -125,12 +122,11 @@ You can:
 - Read markdown-formatted dialogue
 - See feedback and summaries for each conversation
 - Secure authentication ensures privacy
+- All conversations stored securely in AWS S3
 `;
 
-  fs.writeFileSync(
-    path.join(userDir, 'welcome-conversation.md'),
-    exampleConversation
-  );
+  const key = getConversationKey(userId, 'welcome-conversation');
+  await uploadToS3(key, exampleConversation);
 }
 
 /**
@@ -140,13 +136,13 @@ export async function readConversationFile(
   userId: string,
   conversationId: string
 ): Promise<{ content: string; frontmatter: any } | null> {
-  const filePath = path.join(CONVERSATIONS_DIR, userId, `${conversationId}.md`);
+  const key = getConversationKey(userId, conversationId);
+  const fileContents = await downloadFromS3(key);
 
-  if (!fs.existsSync(filePath)) {
+  if (!fileContents) {
     return null;
   }
 
-  const fileContents = fs.readFileSync(filePath, 'utf8');
   const { data, content } = matter(fileContents);
 
   return {
@@ -163,13 +159,13 @@ export async function updateConversationFile(
   conversationId: string,
   updates: { summary?: string; feedback?: string }
 ): Promise<boolean> {
-  const filePath = path.join(CONVERSATIONS_DIR, userId, `${conversationId}.md`);
+  const key = getConversationKey(userId, conversationId);
+  const fileContents = await downloadFromS3(key);
 
-  if (!fs.existsSync(filePath)) {
+  if (!fileContents) {
     return false;
   }
 
-  const fileContents = fs.readFileSync(filePath, 'utf8');
   const { data, content } = matter(fileContents);
 
   // Merge updates into frontmatter
@@ -180,7 +176,7 @@ export async function updateConversationFile(
 
   // Reconstruct the file with updated frontmatter
   const updatedFile = matter.stringify(content, updatedData);
-  fs.writeFileSync(filePath, updatedFile, 'utf8');
+  await uploadToS3(key, updatedFile);
 
   return true;
 }

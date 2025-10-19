@@ -122,7 +122,7 @@ ${conversation.content.substring(0, 2000)}`;
       contents: topicPrompt,
     });
 
-    const selectedTopicsText = topicsResponse.text.trim().toLowerCase();
+    const selectedTopicsText = (topicsResponse.text || '').trim().toLowerCase();
     const selectedTopics = selectedTopicsText
       .split(',')
       .map(t => t.trim())
@@ -206,7 +206,7 @@ ${headlinesContext}`;
       contents: selectionPrompt,
     });
 
-    const selectedIndices = selectionResponse.text
+    const selectedIndices = (selectionResponse.text || '')
       .trim()
       .split(',')
       .map(n => parseInt(n.trim()) - 1)

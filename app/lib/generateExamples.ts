@@ -1,7 +1,4 @@
-import fs from 'fs';
-import path from 'path';
-
-const CONVERSATIONS_DIR = path.join(process.cwd(), 'conversations');
+import { uploadToS3, getConversationKey } from './s3';
 
 export interface ExampleConversation {
   filename: string;
@@ -9,25 +6,20 @@ export interface ExampleConversation {
 }
 
 /**
- * Generate example conversation markdown files for a new user
+ * Generate example conversation markdown files for a new user in S3
  */
-export function generateExampleConversations(userId: string): void {
-  const userDir = path.join(CONVERSATIONS_DIR, userId);
-
-  // Create user directory if it doesn't exist
-  if (!fs.existsSync(userDir)) {
-    fs.mkdirSync(userDir, { recursive: true });
-  }
-
+export async function generateExampleConversations(userId: string): Promise<void> {
   // Generate multiple example conversations
   const examples = getExampleConversations();
 
-  examples.forEach((example) => {
-    const filePath = path.join(userDir, example.filename);
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, example.content, 'utf8');
-    }
-  });
+  // Upload all examples to S3 concurrently
+  await Promise.all(
+    examples.map(async (example) => {
+      const conversationId = example.filename.replace('.md', '');
+      const key = getConversationKey(userId, conversationId);
+      await uploadToS3(key, example.content);
+    })
+  );
 }
 
 /**

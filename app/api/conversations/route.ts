@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/app/lib/firebase/config';
 import { getAuth } from 'firebase-admin/auth';
 import * as admin from 'firebase-admin';
 import { getConversationsByUser } from '@/app/lib/markdown';

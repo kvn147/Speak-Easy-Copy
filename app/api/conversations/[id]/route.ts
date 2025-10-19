@@ -25,7 +25,8 @@ export async function GET(
     const conversationId = id;
 
     // Check if user has access to this conversation
-    if (!canAccessConversation(userId, conversationId)) {
+    const hasAccess = await canAccessConversation(userId, conversationId);
+    if (!hasAccess) {
       return NextResponse.json(
         { error: 'Forbidden: You do not have access to this conversation' },
         { status: 403 }

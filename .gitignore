@@ -24,6 +24,14 @@ dist-ssr
 
 # Environment variables
 .env
+.env.local
 .env.local.env.local
 next-env.d.ts
 .next/
+
+# AWS deployment temporary files
+deploy/ec2-trust-policy.json
+deploy/s3-access-policy.json
+
+# Local conversations directory (now using S3)
+conversations/
