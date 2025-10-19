@@ -51,13 +51,18 @@ const io = new Server(httpServer, {
     origin: [
       "http://localhost:3000",
       "http://localhost:5173",
-      "http://speakeasy.health:3000",
-      "http://3.93.171.8:3000", // EC2 public IP
-      "http://98.89.30.181:3000" // Alternative EC2 IP
+      "http://speakeasy.health",      // Production domain
+      "http://speakeasy.health:3000", // Direct access (for testing)
+      "http://3.93.171.8",            // EC2 IP via Nginx
+      "http://3.93.171.8:3000",       // EC2 IP direct access
+      "http://98.89.30.181",          // Alternative EC2 IP via Nginx
+      "http://98.89.30.181:3000"      // Alternative EC2 IP direct
     ],
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST"],
+    credentials: true
   },
-  maxHttpBufferSize: 1e8 // 100 MB for large video chunks
+  maxHttpBufferSize: 1e8, // 100 MB for large video chunks
+  path: '/socket.io/'
 })
 
 app.use(cors())

@@ -226,14 +226,26 @@ export default function ScreenShare({ user }: ScreenShareProps) {
 
   // Set up Socket.IO connection
   useEffect(() => {
-    // Connect to server - use environment variable or current host
-    const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ||
-                      (typeof window !== 'undefined'
-                        ? `http://${window.location.hostname}:3001`
-                        : 'http://localhost:3001');
+    // Connect to server - use environment variable or detect from environment
+    let serverUrl: string;
+
+    if (process.env.NEXT_PUBLIC_SERVER_URL) {
+      // Explicitly configured (for testing or custom setups)
+      serverUrl = process.env.NEXT_PUBLIC_SERVER_URL;
+    } else if (typeof window !== 'undefined') {
+      // In browser - use same origin (Nginx will proxy /socket.io/ to backend)
+      // This works for both development (localhost:3000) and production (via Nginx)
+      serverUrl = window.location.origin;
+    } else {
+      // SSR fallback
+      serverUrl = 'http://localhost:3001';
+    }
 
     console.log('Connecting to WebSocket server:', serverUrl);
-    const socket = io(serverUrl);
+    const socket = io(serverUrl, {
+      path: '/socket.io/',
+      transports: ['websocket', 'polling']
+    });
     socketRef.current = socket;
 
     socket.on('connect', () => {
