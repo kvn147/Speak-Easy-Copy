@@ -42,29 +42,24 @@ const geminiAI = new GoogleGenAI({
 })
 
 // Initialize AWS clients
-const rekognitionClient = new RekognitionClient({
+// In production (EC2), these will automatically use the IAM role credentials
+// In development, they will use the credentials from environment variables
+const awsClientConfig: any = {
   region: process.env.AWS_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
-  }
-})
+};
 
-const transcribeClient = new TranscribeStreamingClient({
-  region: process.env.AWS_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
-  }
-})
+// Only add explicit credentials if they're provided (for local development)
+// On EC2 with IAM role, omit credentials to use the instance role automatically
+if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+  awsClientConfig.credentials = {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  };
+}
 
-const bedrockClient = new BedrockRuntimeClient({
-  region: process.env.AWS_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
-  }
-})
+const rekognitionClient = new RekognitionClient(awsClientConfig)
+const transcribeClient = new TranscribeStreamingClient(awsClientConfig)
+const bedrockClient = new BedrockRuntimeClient(awsClientConfig)
 
 const app = express()
 const httpServer = createServer(app)
