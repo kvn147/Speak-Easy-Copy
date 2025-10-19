@@ -55,73 +55,65 @@ export default function Home() {
 
   // Show main app if logged in
   return (
-    <div className="home-landing">
-      <header className="landing-header">
-        <div className="brand-header">
-          <Image 
-            src="/assets/images/speak-easy-icon.png" 
-            alt="SpeakEasy Logo" 
-            width={56} 
-            height={56}
-            className="logo"
+    <div className="notion-home">
+      {/* Top Navigation Bar */}
+      <nav className="notion-nav">
+        <div className="nav-left">
+          <Image
+            src="/assets/images/speak-easy-icon.png"
+            alt="SpeakEasy Logo"
+            width={28}
+            height={28}
+            className="nav-logo"
           />
-          <h1>SpeakEasy</h1>
+          <span className="nav-title">SpeakEasy</span>
         </div>
-        <p className="subtitle">Real-time Conversation Assistant & Analysis Platform</p>
-        <div className="user-info">
-          <span>Welcome, {user.email}</span>
-          <button onClick={logout} className="logout-button">
+        <div className="nav-right">
+          <span className="nav-user">{user.email}</span>
+          <button onClick={logout} className="nav-logout">
             Logout
           </button>
         </div>
-      </header>
+      </nav>
 
-      <div className="home-grid">
-        <div className="feature-card">
-          <div className="feature-icon">🎥</div>
-          <h2>Live Session</h2>
-          <p>Start a real-time screen sharing session with AI-powered conversation advice, emotion detection, and speech transcription.</p>
-          <a href="/live-session" className="primary-button">
-            Start Live Session
-          </a>
-        </div>
-
-        <div className="feature-card">
-          <div className="feature-icon">📚</div>
-          <h2>Conversation History</h2>
-          <p>View, manage, and analyze your past conversations with AI-powered summaries and speaking feedback.</p>
-          <a href="/conversations" className="primary-button">
-            View Conversations
-          </a>
-        </div>
+      {/* Hero Section */}
+      <div className="notion-hero">
+        <h1 className="hero-title">Welcome back 👋</h1>
+        <p className="hero-subtitle">Your AI-powered conversation assistant</p>
       </div>
 
-      <div className="feature-list">
-        <h3>Features</h3>
-        <div className="features-grid">
-          <div className="feature-item">
-            <span className="feature-emoji">🎭</span>
-            <span>Real-time Emotion Detection</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-emoji">🎤</span>
-            <span>Speech Transcription</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-emoji">🤖</span>
-            <span>AI Conversation Advice</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-emoji">📝</span>
-            <span>Conversation Summaries</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-emoji">💬</span>
-            <span>Speaking Feedback</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-emoji">📰</span>
-            <span>News Recommendations</span>
+      {/* Main Action Cards */}
+      <div className="notion-container">
+        <div className="notion-cards">
+          <a href="/live-session" className="notion-card notion-card-primary">
+            <div className="card-icon">🎥</div>
+            <div className="card-content">
+              <h3>Start Live Session</h3>
+              <p>Real-time conversation coaching with emotion detection and AI advice</p>
+            </div>
+            <div className="card-arrow">→</div>
+          </a>
+
+          <a href="/conversations" className="notion-card">
+            <div className="card-icon">📚</div>
+            <div className="card-content">
+              <h3>View Conversations</h3>
+              <p>Browse and analyze your conversation history</p>
+            </div>
+            <div className="card-arrow">→</div>
+          </a>
+        </div>
+
+        {/* Condensed Features Section */}
+        <div className="notion-features">
+          <h2>Features</h2>
+          <div className="features-compact">
+            <span className="feature-tag">🎭 Emotion Detection</span>
+            <span className="feature-tag">🎤 Transcription</span>
+            <span className="feature-tag">🤖 AI Advice</span>
+            <span className="feature-tag">📝 Summaries</span>
+            <span className="feature-tag">💬 Feedback</span>
+            <span className="feature-tag">📰 News</span>
           </div>
         </div>
       </div>

@@ -29,19 +29,28 @@ export default function LiveSessionPage() {
   }
 
   return (
-    <div>
-      <nav className="live-session-nav">
-        <button
-          onClick={() => router.push('/')}
-          className="nav-back-button"
-        >
-          ← Back to Home
-        </button>
-        <div className="nav-user-email">
-          {user.email}
+    <div className="notion-live-session">
+      {/* Notion-style Top Nav */}
+      <nav className="notion-nav">
+        <div className="nav-left">
+          <button onClick={() => router.push('/')} className="nav-back">
+            ←
+          </button>
+          <span className="nav-title">Live Session</span>
+        </div>
+        <div className="nav-right">
+          <span className="nav-user">{user.email}</span>
         </div>
       </nav>
-      <div style={{ paddingTop: '60px' }}>
+
+      {/* Motivational Quote */}
+      <div className="motivational-quote">
+        <p className="quote-text">"The art of communication is the language of leadership."</p>
+        <p className="quote-author">— James Humes</p>
+      </div>
+
+      {/* Main Content */}
+      <div className="notion-session-content">
         <ScreenShare user={user} />
       </div>
     </div>
