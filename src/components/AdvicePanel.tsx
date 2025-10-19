@@ -1,21 +1,51 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './AdvicePanel.css'
 
 interface AdvicePanelProps {
   isVisible: boolean
-  advice: string
+  options: string[]
   emotion?: string
 }
 
-function AdvicePanel({ isVisible, advice, emotion }: AdvicePanelProps) {
+function AdvicePanel({ isVisible, options, emotion }: AdvicePanelProps) {
   const [isExpanded, setIsExpanded] = useState(true)
+  const [visibleOptions, setVisibleOptions] = useState<number>(0)
+
+  // Animate options appearing one by one when they update
+  useEffect(() => {
+    if (options.length > 0) {
+      setVisibleOptions(0)
+      const timer = setTimeout(() => {
+        setVisibleOptions(1)
+      }, 100)
+
+      const timer2 = setTimeout(() => {
+        setVisibleOptions(2)
+      }, 250)
+
+      const timer3 = setTimeout(() => {
+        setVisibleOptions(3)
+      }, 400)
+
+      const timer4 = setTimeout(() => {
+        setVisibleOptions(4)
+      }, 550)
+
+      return () => {
+        clearTimeout(timer)
+        clearTimeout(timer2)
+        clearTimeout(timer3)
+        clearTimeout(timer4)
+      }
+    }
+  }, [options])
 
   if (!isVisible) return null
 
   return (
     <div className={`advice-panel ${isExpanded ? 'expanded' : 'collapsed'}`}>
       <div className="advice-header">
-        <h3>💡 Live Conversation Coach</h3>
+        <h3>💡 Live Response Options</h3>
         <button
           className="toggle-button"
           onClick={() => setIsExpanded(!isExpanded)}
@@ -32,9 +62,18 @@ function AdvicePanel({ isVisible, advice, emotion }: AdvicePanelProps) {
               Current mood: {emotion}
             </div>
           )}
-          <p className="advice-text">
-            {advice}
-          </p>
+
+          <div className="response-options">
+            {options.map((option, index) => (
+              <div
+                key={index}
+                className={`response-option ${index < visibleOptions ? 'visible' : ''}`}
+              >
+                <span className="option-number">{index + 1}</span>
+                <span className="option-text">{option}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

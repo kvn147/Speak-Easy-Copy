@@ -63,6 +63,17 @@ app.use(cors())
 app.use(express.json())
 
 // Store active sessions for emotion detection and transcription
+interface MoodSnapshot {
+  timestamp: number
+  emotion: string
+  confidence: number
+}
+
+interface TranscriptSegment {
+  timestamp: number
+  text: string
+}
+
 interface AnalysisSession {
   frameCount: number
   lastProcessedTime: number
@@ -72,7 +83,9 @@ interface AnalysisSession {
   currentEmotion: string | null
   fullTranscript: string
   audioChunks: Buffer[]
-  lastAdvice: string
+  lastAdvice: string[]
+  moodHistory: MoodSnapshot[]
+  transcriptSegments: TranscriptSegment[]
 }
 
 const sessions = new Map<string, AnalysisSession>()
@@ -115,29 +128,57 @@ async function detectEmotionsFromFrame(imageBytes: Buffer) {
 }
 
 // Function to generate conversation advice using Claude via Bedrock
-async function generateConversationAdvice(emotion: string | null, transcript: string) {
+async function generateConversationAdvice(
+  moodHistory: MoodSnapshot[],
+  transcriptSegments: TranscriptSegment[],
+  currentEmotion: string | null,
+  fullTranscript: string
+): Promise<string[]> {
   try {
-    const emotionContext = emotion || 'No emotion detected yet'
-    const transcriptContext = transcript || 'No speech detected yet'
+    // Get recent mood history (last 30 seconds)
+    const now = Date.now()
+    const recentMoods = moodHistory.filter(m => now - m.timestamp < 30000)
+    const recentTranscripts = transcriptSegments.filter(t => now - t.timestamp < 30000)
+
+    // Format mood history for context
+    const moodContext = recentMoods.length > 0
+      ? recentMoods.map(m => `${m.emotion} (${m.confidence.toFixed(0)}%)`).join(' → ')
+      : 'No emotions detected yet'
+
+    // Format recent conversation
+    const conversationContext = recentTranscripts.length > 0
+      ? recentTranscripts.map(t => t.text).join(' ')
+      : (fullTranscript || 'No speech detected yet')
 
     // Create the prompt for Claude
-    const prompt = `You are a real-time conversation coach. Based on the current emotional state and conversation transcript, provide brief, actionable advice to help guide the conversation positively.
+    const prompt = `You are a real-time conversation coach analyzing a live conversation. Based on the emotional progression and recent dialogue, provide exactly 4 different response options.
 
-Current Emotion: ${emotionContext}
-Conversation so far: "${transcriptContext}"
+MOOD PROGRESSION (last 30s): ${moodContext}
+CURRENT EMOTION: ${currentEmotion || 'Unknown'}
+RECENT CONVERSATION: "${conversationContext}"
 
-Provide 1-2 sentences of helpful, specific advice. Focus on:
-- Responding to the detected emotion appropriately
-- Building on what's been said
-- Suggesting next steps or questions to deepen the conversation
-- Being encouraging and constructive
+Provide exactly 4 different ways to respond in this moment. Each option should:
+- Be specific to the current emotional state and conversation
+- Offer a different approach (question, affirmation, topic shift, empathy)
+- Be concise (1-2 sentences max)
+- Feel natural and conversational
 
-Keep it concise and actionable.`
+RESPOND ONLY WITH VALID JSON in this exact format:
+{
+  "options": [
+    "First response option here",
+    "Second response option here",
+    "Third response option here",
+    "Fourth response option here"
+  ]
+}
+
+IMPORTANT: Output ONLY the JSON object, no other text.`
 
     // Prepare the request for Claude 3.5 Sonnet
     const payload = {
       anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 200,
+      max_tokens: 500,
       messages: [
         {
           role: "user",
@@ -157,16 +198,42 @@ Keep it concise and actionable.`
     const responseBody = JSON.parse(new TextDecoder().decode(response.body))
 
     if (responseBody.content && responseBody.content.length > 0) {
-      return responseBody.content[0].text
+      const responseText = responseBody.content[0].text
+
+      // Parse JSON response
+      try {
+        // Extract JSON from response (in case Claude adds extra text)
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0])
+          if (parsed.options && Array.isArray(parsed.options)) {
+            return parsed.options.slice(0, 4) // Ensure max 4 options
+          }
+        }
+      } catch (parseError) {
+        console.error('Failed to parse JSON from Bedrock response:', parseError)
+        console.error('Response was:', responseText)
+      }
     }
 
-    return 'Continue the conversation naturally.'
+    // Fallback if parsing fails
+    return [
+      'Ask an open-ended question about their experience',
+      'Acknowledge their feelings and show empathy',
+      'Share a related thought to build connection',
+      'Suggest exploring this topic more deeply'
+    ]
   } catch (error) {
     console.error('Bedrock error:', error)
     if (error instanceof Error) {
       console.error('Error details:', error.message)
     }
-    return 'Keep engaging with the conversation.'
+    return [
+      'Continue the conversation naturally',
+      'Ask a follow-up question',
+      'Show active listening',
+      'Build on what they just said'
+    ]
   }
 }
 
@@ -193,7 +260,14 @@ io.on('connection', (socket) => {
       currentEmotion: null,
       fullTranscript: '',
       audioChunks: [],
-      lastAdvice: 'Start your conversation naturally. I\'ll provide live tips as we go.'
+      lastAdvice: [
+        'Start your conversation naturally',
+        'Be yourself and stay engaged',
+        'Listen actively to what they share',
+        'I\'ll provide live tips as we go'
+      ],
+      moodHistory: [],
+      transcriptSegments: []
     })
 
     socket.emit('stream-ready', { message: 'Server ready to analyze emotions and transcribe audio' })
@@ -236,6 +310,17 @@ io.on('connection', (socket) => {
 
         // Store current emotion in session
         session.currentEmotion = `${dominantEmotion} (${confidence.toFixed(1)}%)`
+
+        // Add to mood history
+        session.moodHistory.push({
+          timestamp: Date.now(),
+          emotion: dominantEmotion,
+          confidence: confidence
+        })
+
+        // Keep only last 60 seconds of mood history
+        const cutoffTime = Date.now() - 60000
+        session.moodHistory = session.moodHistory.filter(m => m.timestamp > cutoffTime)
 
         // Display emotion only
         console.log('╔═══════════════════════════════════════════════════════════')
@@ -325,6 +410,17 @@ io.on('connection', (socket) => {
                   } else {
                     session.fullTranscript = text
                   }
+
+                  // Add to transcript segments for recent context
+                  session.transcriptSegments.push({
+                    timestamp: Date.now(),
+                    text: text
+                  })
+
+                  // Keep only last 60 seconds of transcript segments
+                  const cutoffTime = Date.now() - 60000
+                  session.transcriptSegments = session.transcriptSegments.filter(t => t.timestamp > cutoffTime)
+
                   newTextDetected = true
                 }
               }
@@ -365,37 +461,29 @@ io.on('connection', (socket) => {
         if (session.currentEmotion && session.fullTranscript && timeSinceLastAdvice >= 10000) {
           session.lastAdviceGeneratedTime = now
 
-          console.log('💡 Generating conversation advice...')
-          const advice = await generateConversationAdvice(session.currentEmotion, session.fullTranscript)
-          session.lastAdvice = advice
+          console.log('💡 Generating conversation advice with 10s aggregate data...')
+          const adviceOptions = await generateConversationAdvice(
+            session.moodHistory,
+            session.transcriptSegments,
+            session.currentEmotion,
+            session.fullTranscript
+          )
+          session.lastAdvice = adviceOptions
 
-          // Send advice to frontend
+          // Send advice array to frontend
           socket.emit('advice-update', {
-            advice: advice,
+            options: adviceOptions,
             emotion: session.currentEmotion,
             timestamp: new Date().toISOString()
           })
 
           console.log('╔═══════════════════════════════════════════════════════════')
-          console.log('║ 💡 LIVE ADVICE:')
+          console.log('║ 💡 LIVE RESPONSE OPTIONS:')
           console.log('╠═══════════════════════════════════════════════════════════')
 
-          // Word wrap the advice
-          const words = advice.split(' ')
-          let currentLine = '║ '
-          const maxLineLength = 58
-
-          for (const word of words) {
-            if ((currentLine.length + word.length + 1 - 2) > maxLineLength) {
-              console.log(currentLine)
-              currentLine = '║ ' + word
-            } else {
-              currentLine += (currentLine === '║ ' ? '' : ' ') + word
-            }
-          }
-          if (currentLine !== '║ ') {
-            console.log(currentLine)
-          }
+          adviceOptions.forEach((option, index) => {
+            console.log(`║ ${index + 1}. ${option}`)
+          })
 
           console.log('╚═══════════════════════════════════════════════════════════\n')
         }

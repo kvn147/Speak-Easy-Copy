@@ -7,7 +7,12 @@ function ScreenShare() {
   const [isSharing, setIsSharing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
-  const [currentAdvice, setCurrentAdvice] = useState<string>('Start your conversation naturally. I\'ll provide live tips as we go.')
+  const [currentOptions, setCurrentOptions] = useState<string[]>([
+    'Start your conversation naturally',
+    'Be yourself and stay engaged',
+    'Listen actively to what they share',
+    'I\'ll provide live tips as we go'
+  ])
   const [currentEmotion, setCurrentEmotion] = useState<string>('')
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -245,8 +250,12 @@ function ScreenShare() {
 
     socket.on('advice-update', (data) => {
       console.log('Received advice update:', data)
-      setCurrentAdvice(data.advice)
-      setCurrentEmotion(data.emotion)
+      if (data.options && Array.isArray(data.options)) {
+        setCurrentOptions(data.options)
+      }
+      if (data.emotion) {
+        setCurrentEmotion(data.emotion)
+      }
     })
 
     // Cleanup on unmount
@@ -318,7 +327,7 @@ function ScreenShare() {
 
       <AdvicePanel
         isVisible={isSharing}
-        advice={currentAdvice}
+        options={currentOptions}
         emotion={currentEmotion}
       />
     </div>
