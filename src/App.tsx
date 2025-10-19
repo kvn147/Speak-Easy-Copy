@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ScreenShare from './components/ScreenShare'
 import LoginForm from './components/auth/LoginForm'
 import RegisterForm from './components/auth/RegisterForm'
@@ -8,7 +8,13 @@ import './App.css'
 function App() {
   const [view, setView] = useState<'home' | 'live-session'>('home')
   const [isLogin, setIsLogin] = useState(true)
+  const [isBrowser, setIsBrowser] = useState(false)
   const { user, loading, logout } = useAuth()
+
+  // Check if we're in browser environment
+  useEffect(() => {
+    setIsBrowser(true)
+  }, [])
 
   // Show loading spinner while checking auth state
   if (loading) {
@@ -60,7 +66,7 @@ function App() {
             </button>
           </div>
         </nav>
-        <ScreenShare />
+        {isBrowser && <ScreenShare />}
       </div>
     )
   }

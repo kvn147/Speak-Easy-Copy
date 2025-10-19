@@ -51,6 +51,7 @@ const io = new Server(httpServer, {
     origin: [
       "http://localhost:3000",
       "http://localhost:5173",
+      "http://speakeasy.health:3000",
       "http://3.93.171.8:3000", // EC2 public IP
       "http://98.89.30.181:3000" // Alternative EC2 IP
     ],

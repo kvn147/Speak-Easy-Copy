@@ -112,6 +112,12 @@ function ScreenShare() {
     try {
       setError(null)
 
+      // Check if running in browser
+      if (typeof window === 'undefined' || typeof navigator === 'undefined' || !navigator.mediaDevices) {
+        setError('Screen sharing is only available in the browser')
+        return
+      }
+
       // Request screen sharing with audio and reduced quality
       // Resolution: Target 1280x720 (720p), max 1920x1080
       // Frame Rate: Target 15 fps, max 24 fps (down from typical 30-60 fps)
@@ -222,8 +228,25 @@ function ScreenShare() {
 
   // Set up Socket.IO connection
   useEffect(() => {
+    // Only run in browser
+    if (typeof window === 'undefined') return
+
+    // Determine server URL based on environment
+    let serverUrl: string
+
+    if (process.env.NODE_ENV === 'development') {
+      // Local development
+      serverUrl = 'http://localhost:3001'
+    } else {
+      // Production - use same host as web app, different port
+      serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 
+                  `http://${window.location.hostname}:3001`
+    }
+
+    console.log('Connecting to WebSocket server:', serverUrl)
+    
     // Connect to server
-    const socket = io('http://localhost:3001')
+    const socket = io(serverUrl)
     socketRef.current = socket
 
     socket.on('connect', () => {
