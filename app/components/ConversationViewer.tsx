@@ -70,8 +70,13 @@ export default function ConversationViewer({ conversationId }: ConversationViewe
 
         const data = await response.json();
         console.log('📦 Received data:', data);
-        console.log('💾 Setting conversation:', data.conversation);
-        setConversation(data.conversation);
+        console.log('📦 data.conversation:', data.conversation);
+        console.log('📦 data keys:', Object.keys(data));
+
+        // Handle both wrapped and unwrapped responses
+        const conversationData = data.conversation || data;
+        console.log('💾 Setting conversation:', conversationData);
+        setConversation(conversationData);
       } catch (err: any) {
         console.error('❌ Error fetching conversation:', err);
         setError(err.message);
