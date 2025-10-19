@@ -39,24 +39,31 @@ export async function uploadToS3(key: string, content: string, contentType: stri
  */
 export async function downloadFromS3(key: string): Promise<string | null> {
   try {
+    console.log(`[S3] Downloading file: ${key} from bucket: ${BUCKET_NAME}`);
+
     const command = new GetObjectCommand({
       Bucket: BUCKET_NAME,
       Key: key,
     });
 
     const response = await s3Client.send(command);
+    console.log(`[S3] Download response status:`, response.$metadata);
 
     if (!response.Body) {
+      console.warn(`[S3] No body in response for key: ${key}`);
       return null;
     }
 
     // Convert stream to string
     const bodyContents = await streamToString(response.Body as any);
+    console.log(`[S3] Successfully downloaded ${bodyContents.length} bytes`);
     return bodyContents;
   } catch (error: any) {
     if (error.name === 'NoSuchKey') {
+      console.warn(`[S3] File not found: ${key}`);
       return null;
     }
+    console.error(`[S3] Error downloading ${key}:`, error.name, error.message);
     throw error;
   }
 }
