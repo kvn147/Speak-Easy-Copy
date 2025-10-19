@@ -40,10 +40,13 @@ export default function ConversationViewer({ conversationId }: ConversationViewe
   const [newsHeadlines, setNewsHeadlines] = useState<NewsArticle[]>([]);
   const [newsTopics, setNewsTopics] = useState<string[]>([]);
 
-  // Debug logging for feedback
+  // Debug logging for conversation state
   useEffect(() => {
-    console.log('🔍 Conversation feedback changed:', conversation?.feedback ? 'EXISTS' : 'NULL');
-  }, [conversation?.feedback]);
+    console.log('🔍 Conversation state changed:', conversation);
+    console.log('  - ID:', conversation?.id);
+    console.log('  - Title:', conversation?.title);
+    console.log('  - Dialogue length:', conversation?.dialogue?.length);
+  }, [conversation]);
 
   useEffect(() => {
     if (!user || !conversationId) return;
@@ -51,19 +54,26 @@ export default function ConversationViewer({ conversationId }: ConversationViewe
     const fetchConversation = async () => {
       try {
         const token = await user.getIdToken();
+        console.log('🔍 Fetching conversation:', conversationId);
         const response = await fetch(`/api/conversations/${conversationId}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
+          cache: 'no-store', // Prevent caching issues
         });
+
+        console.log('📡 Response status:', response.status, response.statusText);
 
         if (!response.ok) {
           throw new Error('Failed to fetch conversation');
         }
 
         const data = await response.json();
+        console.log('📦 Received data:', data);
+        console.log('💾 Setting conversation:', data.conversation);
         setConversation(data.conversation);
       } catch (err: any) {
+        console.error('❌ Error fetching conversation:', err);
         setError(err.message);
       } finally {
         setLoading(false);
