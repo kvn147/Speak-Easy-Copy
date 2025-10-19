@@ -88,6 +88,7 @@ interface AnalysisSession {
   lastAdvice: string[]
   moodHistory: MoodSnapshot[]
   transcriptSegments: TranscriptSegment[]
+  userId: string
 }
 
 const sessions = new Map<string, AnalysisSession>()
@@ -357,8 +358,8 @@ IMPORTANT: Output ONLY the JSON object, no other text.`
 // Function to save conversation as markdown file
 function saveConversationToMarkdown(session: AnalysisSession, summary: string, duration: number) {
   try {
-    // Use 'demo-user' as default user ID (can be replaced with actual user ID from Firebase)
-    const userId = 'demo-user'
+    // Use user ID from session
+    const userId = session.userId
     const conversationsDir = path.join(__dirname, '../conversations', userId)
 
     // Create directory if it doesn't exist
@@ -366,11 +367,12 @@ function saveConversationToMarkdown(session: AnalysisSession, summary: string, d
       fs.mkdirSync(conversationsDir, { recursive: true })
     }
 
-    // Generate filename based on timestamp
+    // Generate unique filename: userId + timestamp + random string
     const timestamp = new Date().toISOString()
     const dateStr = timestamp.split('T')[0]
     const timeStr = timestamp.split('T')[1].split('.')[0].replace(/:/g, '-')
-    const filename = `conversation-${dateStr}-${timeStr}.md`
+    const randomStr = Math.random().toString(36).substring(2, 8) // 6 character random string
+    const filename = `${userId}-${dateStr}-${timeStr}-${randomStr}.md`
     const filepath = path.join(conversationsDir, filename)
 
     // Build mood history text
@@ -381,27 +383,39 @@ function saveConversationToMarkdown(session: AnalysisSession, summary: string, d
     // Format transcript as dialogue
     const dialogue = session.fullTranscript || 'No transcript available.'
 
-    // Create markdown content with frontmatter
+    // Extract first line of summary for frontmatter
+    const summaryPreview = summary.split('\n').filter(line => line.trim().length > 0 && !line.startsWith('#'))[0] || 'AI-generated conversation summary'
+
+    // Create markdown content with frontmatter and consistent structure
     const markdown = `---
-title: Conversation Session ${dateStr} ${timeStr.replace(/-/g, ':')}
+title: Conversation ${dateStr} ${timeStr.replace(/-/g, ':')}
 date: ${timestamp}
-summary: ${summary.replace(/\n/g, ' ').substring(0, 200)}...
+summary: ${summaryPreview.substring(0, 200)}
 feedback:
 ---
 
-# Dialogue
+${summary}
+
+---
+
+## 📝 Full Transcript
 
 ${dialogue}
 
-# Detected Emotions Timeline
+---
+
+## 😊 Detected Emotions Timeline
 
 ${moodSummary || 'No emotions detected.'}
 
-# Session Details
+---
 
-- **Duration:** ${duration.toFixed(1)} seconds
+## 📊 Session Metadata
+
+- **Duration:** ${duration.toFixed(1)} seconds (${Math.floor(duration / 60)}m ${Math.floor(duration % 60)}s)
 - **Frames Analyzed:** ${session.frameCount}
-- **Recording Date:** ${new Date(session.startTime).toLocaleString()}
+- **Recording Started:** ${new Date(session.startTime).toLocaleString()}
+- **User ID:** ${userId}
 `
 
     // Write to file
@@ -423,8 +437,9 @@ io.on('connection', (socket) => {
   console.log('Client connected:', socket.id)
 
   // Handle stream start
-  socket.on('stream-start', () => {
-    console.log('Stream started for client:', socket.id)
+  socket.on('stream-start', (data: { userId?: string }) => {
+    const userId = data?.userId || 'demo-user'
+    console.log('Stream started for client:', socket.id, 'User ID:', userId)
 
     // Initialize analysis session
     sessions.set(socket.id, {
@@ -445,7 +460,8 @@ io.on('connection', (socket) => {
         'I\'ll provide live tips as we go'
       ],
       moodHistory: [],
-      transcriptSegments: []
+      transcriptSegments: [],
+      userId: userId
     })
 
     socket.emit('stream-ready', { message: 'Server ready to analyze emotions and transcribe audio' })

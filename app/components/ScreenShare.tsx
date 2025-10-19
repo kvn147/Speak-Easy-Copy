@@ -2,9 +2,14 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { User } from 'firebase/auth';
 import AdvicePanel from './AdvicePanel';
 
-export default function ScreenShare() {
+interface ScreenShareProps {
+  user: User;
+}
+
+export default function ScreenShare({ user }: ScreenShareProps) {
   const [isSharing, setIsSharing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -132,9 +137,9 @@ export default function ScreenShare() {
         videoRef.current.srcObject = stream;
       }
 
-      // Notify server that stream is starting
+      // Notify server that stream is starting with user ID
       if (socketRef.current) {
-        socketRef.current.emit('stream-start');
+        socketRef.current.emit('stream-start', { userId: user.uid });
       }
 
       setIsSharing(true);

@@ -63,7 +63,7 @@ export default function LiveSessionPage() {
         </div>
       </nav>
       <div style={{ paddingTop: '60px' }}>
-        <ScreenShare />
+        <ScreenShare user={user} />
       </div>
     </div>
   );
