@@ -227,7 +227,7 @@ export default function ConversationViewer({ conversationId }: ConversationViewe
           <button 
             onClick={handleGenerateSummary} 
             disabled={generatingSummary}
-            className="ai-button"
+            className="ai-button summary"
           >
             {generatingSummary ? (
               <>
@@ -241,7 +241,7 @@ export default function ConversationViewer({ conversationId }: ConversationViewe
           <button 
             onClick={handleGenerateFeedback} 
             disabled={generatingFeedback}
-            className="ai-button"
+            className="ai-button feedback"
           >
             {generatingFeedback ? (
               <>
@@ -255,7 +255,7 @@ export default function ConversationViewer({ conversationId }: ConversationViewe
           <button 
             onClick={handleFetchNews} 
             disabled={fetchingNews}
-            className="ai-button"
+            className="ai-button news"
           >
             {fetchingNews ? (
               <>

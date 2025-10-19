@@ -4,6 +4,7 @@ import { useAuth } from './lib/firebase/AuthContext';
 import { useState } from 'react';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
+import Image from 'next/image';
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
@@ -24,7 +25,16 @@ export default function Home() {
       <div className="auth-page">
         <div className="auth-container">
           <div className="auth-header">
-            <h1>SpeakEasy</h1>
+            <div className="brand-header">
+              <Image 
+                src="/assets/images/speak-easy-icon.png" 
+                alt="SpeakEasy Logo" 
+                width={48} 
+                height={48}
+                className="logo"
+              />
+              <h1>SpeakEasy</h1>
+            </div>
             <p>Sign in to record conversations and view your conversation history</p>
           </div>
 
@@ -47,7 +57,16 @@ export default function Home() {
   return (
     <div className="home-landing">
       <header className="landing-header">
-        <h1>SpeakEasy</h1>
+        <div className="brand-header">
+          <Image 
+            src="/assets/images/speak-easy-icon.png" 
+            alt="SpeakEasy Logo" 
+            width={56} 
+            height={56}
+            className="logo"
+          />
+          <h1>SpeakEasy</h1>
+        </div>
         <p className="subtitle">Real-time Conversation Assistant & Analysis Platform</p>
         <div className="user-info">
           <span>Welcome, {user.email}</span>

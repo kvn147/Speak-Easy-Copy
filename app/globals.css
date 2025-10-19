@@ -239,30 +239,58 @@ body {
 }
 
 .ai-button {
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #C9A05F 0%, #B89050 100%);
+  color: #2D2A26;
+  border: 2px solid #A08968;
   border-radius: 8px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 2px 4px rgba(45, 42, 38, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.ai-button:hover::before {
+  left: 100%;
 }
 
 .ai-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #D4A05F 0%, #C9A05F 100%);
+  border-color: #C9A05F;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 8px rgba(45, 42, 38, 0.2);
 }
 
 .ai-button:active:not(:disabled) {
   transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(45, 42, 38, 0.15);
 }
 
 .ai-button:disabled {
+  background: #D4C4A8;
+  color: #A08968;
+  border-color: #A08968;
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.ai-button:disabled:hover {
+  transform: none;
+  box-shadow: 0 2px 4px rgba(45, 42, 38, 0.1);
 }
 
 /* Spinner Animation */
@@ -270,8 +298,8 @@ body {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+  border: 2px solid rgba(45, 42, 38, 0.3);
+  border-top-color: currentColor;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-right: 8px;
@@ -279,10 +307,57 @@ body {
   flex-shrink: 0;
 }
 
+/* Spinner color variants for button types */
+.ai-button.summary .spinner,
+.ai-button.feedback .spinner {
+  border-color: rgba(245, 239, 230, 0.3);
+  border-top-color: #F5EFE6;
+}
+
+.ai-button .spinner,
+.ai-button.news .spinner {
+  border-color: rgba(45, 42, 38, 0.3);
+  border-top-color: #2D2A26;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* AI Button Variants */
+.ai-button.summary {
+  background: linear-gradient(135deg, #6B7F8E 0%, #5A6D7A 100%);
+  color: #F5EFE6;
+  border-color: #6B7F8E;
+}
+
+.ai-button.summary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7A8F9E 0%, #6B7F8E 100%);
+  border-color: #7A8F9E;
+}
+
+.ai-button.feedback {
+  background: linear-gradient(135deg, #5C7F4A 0%, #4E6D3E 100%);
+  color: #F5EFE6;
+  border-color: #5C7F4A;
+}
+
+.ai-button.feedback:hover:not(:disabled) {
+  background: linear-gradient(135deg, #6A8F56 0%, #5C7F4A 100%);
+  border-color: #6A8F56;
+}
+
+.ai-button.news {
+  background: linear-gradient(135deg, #D4A05F 0%, #C9954F 100%);
+  color: #2D2A26;
+  border-color: #C9954F;
+}
+
+.ai-button.news:hover:not(:disabled) {
+  background: linear-gradient(135deg, #E0B06F 0%, #D4A05F 100%);
+  border-color: #D4A05F;
 }
 
 /* Ensure buttons with spinners align properly */
@@ -427,6 +502,43 @@ body {
   border: 2px solid var(--border-color);
   max-width: 440px;
   width: 100%;
+}
+
+/* Brand Header with Logo */
+.brand-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.brand-header .logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(45, 42, 38, 0.15));
+  transition: transform 0.3s ease;
+}
+
+.brand-header .logo:hover {
+  transform: scale(1.05);
+}
+
+.landing-header .brand-header .logo {
+  width: 56px;
+  height: 56px;
+}
+
+.brand-header h1 {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 36px;
+  font-weight: 700;
+}
+
+.auth-header .brand-header h1 {
+  font-size: 28px;
 }
 
 .auth-header {
@@ -898,6 +1010,10 @@ body {
   margin-bottom: 3rem;
 }
 
+.landing-header .brand-header {
+  margin-bottom: 1rem;
+}
+
 .landing-header h1 {
   font-size: 3.5rem;
   margin-bottom: 0.5rem;
@@ -987,9 +1103,9 @@ body {
 }
 
 .primary-button {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
-  color: var(--bg-light);
-  border: none;
+  background: linear-gradient(135deg, #C9A05F 0%, #B89050 100%);
+  color: #2D2A26;
+  border: 2px solid #A08968;
   padding: 0.75rem 2rem;
   border-radius: 10px;
   font-size: 1rem;
@@ -998,12 +1114,31 @@ body {
   transition: all 0.3s;
   text-decoration: none;
   display: inline-block;
-  box-shadow: 0 4px 12px rgba(107, 78, 61, 0.3);
+  box-shadow: 0 4px 12px rgba(45, 42, 38, 0.15);
+  position: relative;
+  overflow: hidden;
+}
+
+.primary-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.primary-button:hover::before {
+  left: 100%;
 }
 
 .primary-button:hover {
+  background: linear-gradient(135deg, #D4A05F 0%, #C9A05F 100%);
+  border-color: #C9A05F;
   transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(107, 78, 61, 0.4);
+  box-shadow: 0 8px 24px rgba(45, 42, 38, 0.25);
 }
 
 .feature-list {
