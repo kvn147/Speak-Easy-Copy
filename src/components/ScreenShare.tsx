@@ -117,6 +117,7 @@ function ScreenShare() {
       // Frame Rate: Target 15 fps, max 24 fps (down from typical 30-60 fps)
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
+          // @ts-ignore - cursor is supported but not in TypeScript types yet
           cursor: 'always',
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },

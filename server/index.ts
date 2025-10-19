@@ -48,7 +48,12 @@ const app = express()
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:5173"], // Next.js and Vite dev servers
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://3.93.171.8:3000", // EC2 public IP
+      "http://98.89.30.181:3000" // Alternative EC2 IP
+    ],
     methods: ["GET", "POST"]
   },
   maxHttpBufferSize: 1e8 // 100 MB for large video chunks
@@ -127,7 +132,7 @@ async function detectEmotionsFromFrame(imageBytes: Buffer) {
 
 // Function to generate conversation summary using Claude via Bedrock
 // Currently unused - summaries generated manually via Gemini API
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// @ts-ignore - unused function kept for future use
 async function generateConversationSummary(
   moodHistory: MoodSnapshot[],
   fullTranscript: string,
