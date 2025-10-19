@@ -1207,7 +1207,7 @@ body {
   padding: 0.5rem 1rem;
   border-radius: 8px;
   cursor: pointer;
-  fontSize: 14px;
+  font-size: 14px;
   font-weight: 500;
   transition: all 0.2s ease;
 }
