@@ -81,6 +81,8 @@ interface AnalysisSession {
   lastAdviceGeneratedTime: number
   startTime: number
   currentEmotion: string | null
+  previousEmotion: string | null
+  emotionJustChanged: boolean
   fullTranscript: string
   audioChunks: Buffer[]
   lastAdvice: string[]
@@ -132,7 +134,9 @@ async function generateConversationAdvice(
   moodHistory: MoodSnapshot[],
   transcriptSegments: TranscriptSegment[],
   currentEmotion: string | null,
-  fullTranscript: string
+  fullTranscript: string,
+  emotionJustChanged: boolean,
+  previousEmotion: string | null
 ): Promise<string[]> {
   try {
     // Get recent mood history (last 30 seconds)
@@ -150,18 +154,47 @@ async function generateConversationAdvice(
       ? recentTranscripts.map(t => t.text).join(' ')
       : (fullTranscript || 'No speech detected yet')
 
+    // Extract the base emotion (remove confidence percentage)
+    const baseEmotion = currentEmotion?.split('(')[0].trim() || 'UNKNOWN'
+
+    // Create emotion-specific guidance
+    let emotionGuidance = ''
+    if (emotionJustChanged && previousEmotion) {
+      emotionGuidance = `\n⚠️ EMOTION JUST CHANGED from ${previousEmotion} to ${baseEmotion}! Be especially creative and responsive to this shift.\n`
+    }
+
+    // Add specific guidance based on current emotion
+    const emotionStrategies: { [key: string]: string } = {
+      'HAPPY': 'Capitalize on their positive energy. Suggest ways to deepen joy, celebrate together, or channel excitement productively.',
+      'SAD': 'Show deep empathy and validation. Offer comfort, understanding, and gentle ways to explore or process feelings.',
+      'ANGRY': 'Acknowledge their frustration without judgment. Provide calming perspectives, validation, or constructive outlets.',
+      'SURPRISED': 'Embrace the unexpected moment. Explore what surprised them, share in the excitement, or help process the shock.',
+      'CONFUSED': 'Offer clarity and reassurance. Break down complexity, provide structure, or ask clarifying questions.',
+      'DISGUSTED': 'Validate their reaction while seeking to understand. Explore boundaries or suggest reframing.',
+      'FEAR': 'Provide safety and reassurance. Acknowledge concerns, offer support, or help problem-solve.',
+      'CALM': 'Maintain the peaceful energy. Deepen reflection, explore meaningful topics, or strengthen connection.'
+    }
+
+    const specificGuidance = emotionStrategies[baseEmotion] || 'Respond authentically to their emotional state.'
+
     // Create the prompt for Claude
-    const prompt = `You are a real-time conversation coach analyzing a live conversation. Based on the emotional progression and recent dialogue, provide exactly 4 different response options.
+    const prompt = `You are a real-time conversation coach analyzing a live conversation. Based on the emotional progression and recent dialogue, provide exactly 4 CREATIVE and SPECIFIC response options.
 
 MOOD PROGRESSION (last 30s): ${moodContext}
-CURRENT EMOTION: ${currentEmotion || 'Unknown'}
+CURRENT EMOTION: ${baseEmotion}${emotionGuidance}
 RECENT CONVERSATION: "${conversationContext}"
 
+STRATEGY FOR ${baseEmotion}: ${specificGuidance}
+
 Provide exactly 4 different ways to respond in this moment. Each option should:
-- Be specific to the current emotional state and conversation
-- Offer a different approach (question, affirmation, topic shift, empathy)
-- Be concise (1-2 sentences max)
-- Feel natural and conversational
+- Be HIGHLY SPECIFIC to the ${baseEmotion} emotion and what was just said
+- Offer a different creative approach (empathetic question, bold affirmation, surprising insight, playful reframe)
+- Be concise but impactful (1-2 sentences max)
+- Feel natural, warm, and emotionally intelligent
+- Match the energy level of their ${baseEmotion} state
+${emotionJustChanged ? '- DIRECTLY acknowledge and respond to the emotional shift they just experienced' : ''}
+
+Make your suggestions CREATIVE, ACTIONABLE, and EMOTIONALLY RESONANT. Avoid generic advice.
 
 RESPOND ONLY WITH VALID JSON in this exact format:
 {
@@ -188,7 +221,7 @@ IMPORTANT: Output ONLY the JSON object, no other text.`
     }
 
     const command = new InvokeModelCommand({
-      modelId: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      modelId: "us.anthropic.claude-3-5-sonnet-20241022-v2:0", // Cross-region inference profile
       contentType: "application/json",
       accept: "application/json",
       body: JSON.stringify(payload)
@@ -258,6 +291,8 @@ io.on('connection', (socket) => {
       lastAdviceGeneratedTime: Date.now(),
       startTime: Date.now(),
       currentEmotion: null,
+      previousEmotion: null,
+      emotionJustChanged: false,
       fullTranscript: '',
       audioChunks: [],
       lastAdvice: [
@@ -307,6 +342,16 @@ io.on('connection', (socket) => {
       if (emotions && emotions.length > 0) {
         const dominantEmotion = emotions[0].dominantEmotion || 'UNKNOWN'
         const confidence = emotions[0].confidence || 0
+
+        // Detect emotion change
+        const previousBaseEmotion = session.currentEmotion?.split('(')[0].trim()
+        if (previousBaseEmotion && previousBaseEmotion !== dominantEmotion) {
+          session.emotionJustChanged = true
+          session.previousEmotion = previousBaseEmotion
+          console.log(`\n🔄 EMOTION CHANGED: ${previousBaseEmotion} → ${dominantEmotion}\n`)
+        } else {
+          session.emotionJustChanged = false
+        }
 
         // Store current emotion in session
         session.currentEmotion = `${dominantEmotion} (${confidence.toFixed(1)}%)`
@@ -454,19 +499,29 @@ io.on('connection', (socket) => {
 
         console.log('╚═══════════════════════════════════════════════════════════\n')
 
-        // Generate advice if we have both emotion and transcript, and it's been 10+ seconds since last advice
+        // Generate advice if we have both emotion and transcript
+        // Trigger when: (1) emotion just changed OR (2) 10+ seconds since last advice
         const now = Date.now()
         const timeSinceLastAdvice = now - session.lastAdviceGeneratedTime
+        const shouldGenerateAdvice = session.currentEmotion && session.fullTranscript &&
+                                     (session.emotionJustChanged || timeSinceLastAdvice >= 10000)
 
-        if (session.currentEmotion && session.fullTranscript && timeSinceLastAdvice >= 10000) {
+        if (shouldGenerateAdvice) {
           session.lastAdviceGeneratedTime = now
 
-          console.log('💡 Generating conversation advice with 10s aggregate data...')
+          if (session.emotionJustChanged) {
+            console.log('💡 EMOTION CHANGED! Generating CREATIVE conversation advice...')
+          } else {
+            console.log('💡 Generating conversation advice with 10s aggregate data...')
+          }
+
           const adviceOptions = await generateConversationAdvice(
             session.moodHistory,
             session.transcriptSegments,
             session.currentEmotion,
-            session.fullTranscript
+            session.fullTranscript,
+            session.emotionJustChanged,
+            session.previousEmotion
           )
           session.lastAdvice = adviceOptions
 
@@ -474,11 +529,12 @@ io.on('connection', (socket) => {
           socket.emit('advice-update', {
             options: adviceOptions,
             emotion: session.currentEmotion,
+            emotionChanged: session.emotionJustChanged,
             timestamp: new Date().toISOString()
           })
 
           console.log('╔═══════════════════════════════════════════════════════════')
-          console.log('║ 💡 LIVE RESPONSE OPTIONS:')
+          console.log(`║ 💡 LIVE RESPONSE OPTIONS${session.emotionJustChanged ? ' (EMOTION SHIFT)' : ''}:`)
           console.log('╠═══════════════════════════════════════════════════════════')
 
           adviceOptions.forEach((option, index) => {
@@ -486,6 +542,11 @@ io.on('connection', (socket) => {
           })
 
           console.log('╚═══════════════════════════════════════════════════════════\n')
+
+          // Reset emotion changed flag after generating advice
+          if (session.emotionJustChanged) {
+            session.emotionJustChanged = false
+          }
         }
       }
     } catch (error) {
