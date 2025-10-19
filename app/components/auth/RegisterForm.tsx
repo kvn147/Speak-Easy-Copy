@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/lib/firebase/AuthContext';
 
 export default function RegisterForm() {
@@ -11,7 +10,6 @@ export default function RegisterForm() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { signup } = useAuth();
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,8 +27,7 @@ export default function RegisterForm() {
 
     try {
       await signup(email, password);
-      // Redirect to home page after successful signup
-      router.push('/');
+      // No redirect needed - parent component will re-render
     } catch (err: any) {
       console.error('Signup error:', err);
       

@@ -1,7 +1,5 @@
-'use client';
-
 import { useState } from 'react';
-import { useAuth } from '@/app/lib/firebase/AuthContext';
+import { useAuth } from '../../lib/firebase/AuthContext';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
@@ -20,7 +18,7 @@ export default function LoginForm() {
       // No redirect needed - parent component will re-render
     } catch (err: any) {
       console.error('Login error:', err);
-      
+
       // User-friendly error messages
       let errorMessage = 'Failed to login';
       if (err.code === 'auth/user-not-found') {
@@ -34,7 +32,7 @@ export default function LoginForm() {
       } else if (err.message) {
         errorMessage = err.message;
       }
-      
+
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -46,7 +44,7 @@ export default function LoginForm() {
       <form onSubmit={handleSubmit} className="auth-form">
         <h2>Sign In</h2>
         {error && <div className="error-message">{error}</div>}
-        
+
         <div className="form-group">
           <label htmlFor="email">Email</label>
           <input

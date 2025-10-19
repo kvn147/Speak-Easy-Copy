@@ -53,7 +53,7 @@ const app = express()
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173", // Vite dev server
+    origin: ["http://localhost:3000", "http://localhost:5173"], // Next.js and Vite dev servers
     methods: ["GET", "POST"]
   },
   maxHttpBufferSize: 1e8 // 100 MB for large video chunks

@@ -1,40 +1,46 @@
-'use client';
-
 import { useState } from 'react';
-import { useAuth } from '@/app/lib/firebase/AuthContext';
+import { useAuth } from '../../lib/firebase/AuthContext';
 
-export default function LoginForm() {
+export default function RegisterForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { signup } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (password !== confirmPassword) {
+      return setError('Passwords do not match');
+    }
+
+    if (password.length < 6) {
+      return setError('Password must be at least 6 characters');
+    }
+
     setIsLoading(true);
 
     try {
-      await login(email, password);
+      await signup(email, password);
       // No redirect needed - parent component will re-render
     } catch (err: any) {
-      console.error('Login error:', err);
-      
+      console.error('Signup error:', err);
+
       // User-friendly error messages
-      let errorMessage = 'Failed to login';
-      if (err.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email';
-      } else if (err.code === 'auth/wrong-password') {
-        errorMessage = 'Incorrect password';
+      let errorMessage = 'Failed to create account';
+      if (err.code === 'auth/email-already-in-use') {
+        errorMessage = 'An account with this email already exists';
       } else if (err.code === 'auth/invalid-email') {
         errorMessage = 'Invalid email address';
-      } else if (err.code === 'auth/too-many-requests') {
-        errorMessage = 'Too many failed attempts. Try again later';
+      } else if (err.code === 'auth/weak-password') {
+        errorMessage = 'Password is too weak';
       } else if (err.message) {
         errorMessage = err.message;
       }
-      
+
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -44,9 +50,9 @@ export default function LoginForm() {
   return (
     <div className="auth-form-container">
       <form onSubmit={handleSubmit} className="auth-form">
-        <h2>Sign In</h2>
+        <h2>Create Account</h2>
         {error && <div className="error-message">{error}</div>}
-        
+
         <div className="form-group">
           <label htmlFor="email">Email</label>
           <input
@@ -67,7 +73,19 @@ export default function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            placeholder="Enter your password"
+            placeholder="At least 6 characters"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="confirmPassword">Confirm Password</label>
+          <input
+            id="confirmPassword"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            placeholder="Confirm your password"
           />
         </div>
 
@@ -75,10 +93,10 @@ export default function LoginForm() {
           {isLoading ? (
             <>
               <span className="spinner"></span>
-              Signing In...
+              Creating Account...
             </>
           ) : (
-            'Sign In'
+            'Create Account'
           )}
         </button>
       </form>
