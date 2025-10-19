@@ -15,9 +15,18 @@ import {
   InvokeModelCommand
 } from '@aws-sdk/client-bedrock-runtime'
 import { uploadConversationToS3 } from './s3.js'
+import { auth } from '../app/lib/firebase/adminConfig.js'
+import { getConversationsByUser, getConversationById, canAccessConversation, readConversationFile, updateConversationFile } from '../app/lib/markdown.js'
+import { generateExampleConversations } from '../app/lib/generateExamples.js'
+import { GoogleGenAI } from '@google/genai'
 
 // Load environment variables
 dotenv.config()
+
+// Initialize Gemini AI
+const geminiAI = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY || '',
+})
 
 // Initialize AWS clients
 const rekognitionClient = new RekognitionClient({
@@ -51,12 +60,15 @@ const io = new Server(httpServer, {
     origin: [
       "http://localhost:3000",
       "http://localhost:5173",
-      "http://speakeasy.health",      // Production domain
-      "http://speakeasy.health:3000", // Direct access (for testing)
-      "http://3.93.171.8",            // EC2 IP via Nginx
-      "http://3.93.171.8:3000",       // EC2 IP direct access
-      "http://98.89.30.181",          // Alternative EC2 IP via Nginx
-      "http://98.89.30.181:3000"      // Alternative EC2 IP direct
+      "http://speakeasy.health",       // Production domain HTTP
+      "https://speakeasy.health",      // Production domain HTTPS
+      "http://www.speakeasy.health",   // Production www HTTP
+      "https://www.speakeasy.health",  // Production www HTTPS
+      "http://speakeasy.health:3000",  // Direct access (for testing)
+      "http://3.93.171.8",             // EC2 IP via Nginx
+      "http://3.93.171.8:3000",        // EC2 IP direct access
+      "http://98.89.30.181",           // Alternative EC2 IP via Nginx
+      "http://98.89.30.181:3000"       // Alternative EC2 IP direct
     ],
     methods: ["GET", "POST"],
     credentials: true
@@ -67,6 +79,219 @@ const io = new Server(httpServer, {
 
 app.use(cors())
 app.use(express.json())
+
+// Middleware to verify Firebase auth token
+async function verifyAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const token = authHeader.split('Bearer ')[1];
+    const decodedToken = await auth.verifyIdToken(token);
+    (req as any).user = { uid: decodedToken.uid };
+    next();
+  } catch (error) {
+    console.error('Auth error:', error);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+}
+
+// API Routes
+// GET /conversations - List user's conversations
+app.get('/conversations', verifyAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.uid;
+    const conversations = await getConversationsByUser(userId);
+    res.json({ conversations });
+  } catch (error) {
+    console.error('Error fetching conversations:', error);
+    res.status(500).json({ error: 'Failed to fetch conversations' });
+  }
+});
+
+// GET /conversations/:id - Get specific conversation
+app.get('/conversations/:id', verifyAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.uid;
+    const conversationId = req.params.id;
+
+    const hasAccess = await canAccessConversation(userId, conversationId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const conversation = await getConversationById(userId, conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    res.json(conversation);
+  } catch (error) {
+    console.error('Error fetching conversation:', error);
+    res.status(500).json({ error: 'Failed to fetch conversation' });
+  }
+});
+
+// POST /init-user - Initialize new user with example conversations
+app.post('/init-user', verifyAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.uid;
+    console.log('📝 Generating example conversations for user:', userId);
+
+    await generateExampleConversations(userId);
+
+    res.json({
+      success: true,
+      message: 'Example conversations created successfully'
+    });
+  } catch (error) {
+    console.error('Error initializing user:', error);
+    res.status(500).json({ error: 'Failed to initialize user' });
+  }
+});
+
+// POST /conversations/:id/summarize - Generate AI summary
+app.post('/conversations/:id/summarize', verifyAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.uid;
+    const conversationId = req.params.id;
+
+    const conversation = await readConversationFile(userId, conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    const dialogueContent = conversation.content.split('## Summary')[0].trim();
+
+    const prompt = `You are a conversation analyst. Generate a comprehensive summary of this conversation in the EXACT markdown format specified below.
+
+FULL TRANSCRIPT: "${dialogueContent}"
+
+Generate a summary using this EXACT markdown template:
+
+# Conversation Summary
+
+## 📊 Overview
+- **Duration**: [estimate based on content length]
+- **Date**: [use current date]
+- **Transcript Length**: [number of words]
+
+## 💬 Key Topics Discussed
+[Bullet points of 3-5 main topics that were discussed. If no speech, write "No topics - conversation not captured"]
+
+## 😊 Emotional Journey
+[Describe the emotional progression throughout the conversation. Include specific emotions detected and any notable shifts. If no emotions detected, write "Emotions not captured"]
+
+## ✨ Highlights & Key Moments
+[Bullet points of 2-4 notable moments, insights, or turning points in the conversation. If minimal content, write "Not enough data captured"]
+
+## 💡 Insights & Patterns
+[2-3 sentences analyzing communication patterns, emotional intelligence, or conversation dynamics observed]
+
+## 🎯 Recommendations for Next Time
+[Bullet points with 2-3 actionable suggestions for improving future conversations based on what was observed]
+
+---
+*Generated by SpeakEasy Conversation Coach*
+
+IMPORTANT:
+- Follow the template EXACTLY as shown above
+- Use the same headers, emoji, and structure
+- Keep it concise but insightful
+- Be specific to the actual conversation content
+- If data is limited, acknowledge it but still provide the template structure`;
+
+    const response = await geminiAI.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
+    const summary = response.text;
+
+    await updateConversationFile(userId, conversationId, { summary });
+
+    res.json({ success: true, summary });
+  } catch (error) {
+    console.error('Error generating summary:', error);
+    res.status(500).json({ error: 'Failed to generate summary' });
+  }
+});
+
+// POST /conversations/:id/feedback - Generate speaking feedback
+app.post('/conversations/:id/feedback', verifyAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.uid;
+    const conversationId = req.params.id;
+
+    const conversation = await readConversationFile(userId, conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    const dialogueContent = conversation.content.split('## Summary')[0].trim();
+
+    const prompt = `You are a communication coach analyzing conversation skills. Based on this conversation transcript, provide constructive feedback.
+
+FULL TRANSCRIPT: "${dialogueContent}"
+
+Provide feedback in this markdown format:
+
+# Speaking Feedback
+
+## 🎯 What You Did Well
+[2-3 specific strengths observed in the conversation]
+
+## 💡 Areas for Improvement
+[2-3 specific, actionable suggestions for improvement]
+
+## 🗣️ Communication Style
+[Brief analysis of the speaking style and patterns]
+
+## 📈 Next Steps
+[1-2 concrete actions to practice for next conversation]
+
+---
+*Generated by SpeakEasy Conversation Coach*`;
+
+    const response = await geminiAI.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
+    const feedback = response.text;
+
+    await updateConversationFile(userId, conversationId, { feedback });
+
+    res.json({ success: true, feedback });
+  } catch (error) {
+    console.error('Error generating feedback:', error);
+    res.status(500).json({ error: 'Failed to generate feedback' });
+  }
+});
+
+// POST /conversations/:id/news - Fetch relevant news articles
+app.post('/conversations/:id/news', verifyAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.uid;
+    const conversationId = req.params.id;
+
+    const conversation = await readConversationFile(userId, conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // For now, return a simple response
+    // The full news functionality with RSS parsing can be added later if needed
+    res.json({
+      success: true,
+      articles: [],
+      message: 'News feature coming soon'
+    });
+  } catch (error) {
+    console.error('Error fetching news:', error);
+    res.status(500).json({ error: 'Failed to fetch news' });
+  }
+});
 
 // Store active sessions for emotion detection and transcription
 interface MoodSnapshot {

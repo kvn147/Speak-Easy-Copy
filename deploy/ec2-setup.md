@@ -109,7 +109,7 @@ aws iam add-role-to-instance-profile \
 ```bash
 # Launch Ubuntu EC2 instance (t3.medium recommended for Node.js apps)
 aws ec2 run-instances \
-  --image-id ami-0341d95f75f311023 \
+  --image-id ami-0b0012dad04fbe3d7 \
   --count 1 \
   --instance-type t3.medium \
   --key-name speakeasy2 \
